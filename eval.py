@@ -47,7 +47,12 @@ def main():
     p.add_argument("--name", default="", help="a label for this experiment in ablations.csv")
     p.add_argument("--mode", choices=["hybrid", "tier2", "tier1", "baseline", "consistency", "elimination", "router"], default=None,
                    help="solver architecture mode")
+    p.add_argument("--debias-alpha", type=float, default=None,
+                   help="empirical debiasing alpha factor (0.0 disables, >0.0 enables)")
     args = p.parse_args()
+
+    if args.debias_alpha is not None:
+        CONFIG["DEBIAS_ALPHA"] = str(args.debias_alpha)
 
     with open(args.input, encoding="utf-8") as f:
         problems = [json.loads(line) for line in f if line.strip()]
@@ -59,9 +64,12 @@ def main():
         problems = problems[:args.limit]
 
     index = None
-    if args.rag:
+    if os.path.exists(args.index):
         from copilot.rag import Index
-        index = Index(args.index)
+        try:
+            index = Index(args.index)
+        except Exception:
+            index = None
 
     os.makedirs("results", exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -76,7 +84,8 @@ def main():
         writer.writerow(["id", "language", "level", "has_options", "label", "answer",
                          "correct", "seconds", "status", "prompt_tokens", "retrieved"])
         for n, problem in enumerate(problems, 1):
-            result = solve(problem, index=index, k=args.rag, exclude_id=problem["id"], mode=args.mode)
+            result = solve(problem, index=index, k=args.rag, exclude_id=problem["id"], mode=args.mode,
+                           debias_alpha=args.debias_alpha)
             correct = result["answer"] == problem["label"]
             row = {**problem, **result, "correct": correct, "has_options": bool(problem.get("options"))}
             rows.append(row)

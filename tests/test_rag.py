@@ -223,6 +223,81 @@ class TestPipelineSolve(unittest.TestCase):
             self.assertEqual(res["answer"], FALLBACK)
             self.assertEqual(res["status"], "timeout")
 
+    def test_tier0_rag_no_options_k0_match(self):
+        problem = {"id": "p_no_opt", "text": "Stem without options", "options": {}}
+        mock_index = MagicMock()
+        mock_index.search.return_value = [(0.95, {"id": "hit_1", "label": "C"})]
+
+        res = solve(problem, index=mock_index, k=0, exclude_id="p_no_opt")
+        mock_index.search.assert_called_once_with(
+            problem, k=1, exclude_id="p_no_opt", min_score=0.94
+        )
+        self.assertEqual(res["answer"], "C")
+        self.assertEqual(res["retrieved"], "hit_1:0.95")
+        self.assertEqual(res["status"], "ok")
+
+    def test_tier0_rag_no_options_below_threshold(self):
+        problem = {"id": "p_no_opt", "text": "Stem without options", "options": {}}
+        mock_index = MagicMock()
+        mock_index.search.return_value = [(0.92, {"id": "hit_1", "label": "C"})]
+
+        res = solve(problem, index=mock_index, k=0, exclude_id="p_no_opt")
+        self.assertEqual(res["answer"], FALLBACK)
+        self.assertEqual(res["retrieved"], "")
+
+    def test_tier0_rag_no_options_exception_falls_back(self):
+        problem = {"id": "p_no_opt", "text": "Stem without options", "options": {}}
+        mock_index = MagicMock()
+        mock_index.search.side_effect = RuntimeError("db error")
+
+        res = solve(problem, index=mock_index, k=0, exclude_id="p_no_opt")
+        self.assertEqual(res["answer"], FALLBACK)
+        self.assertEqual(res["status"], "ok")
+
+
+class TestIndexLoadingInEvalAndPredict(unittest.TestCase):
+    @patch("predict.solve")
+    @patch("copilot.rag.Index")
+    @patch("os.path.exists", return_value=True)
+    def test_predict_loads_index_when_rag_is_zero_and_db_exists(self, mock_exists, mock_index_cls, mock_solve):
+        import predict
+        mock_solve.return_value = {"answer": "A", "seconds": 0.1, "status": "ok"}
+        test_args = ["predict.py", "--input", "in.jsonl", "--output", "out.csv", "--rag", "0"]
+        with patch("sys.argv", test_args), \
+             patch("builtins.open", unittest.mock.mock_open(read_data='{"id": "p1", "text": "stem", "options": {}}\n')):
+            predict.main()
+            mock_index_cls.assert_called_once_with("data/index.db")
+            mock_solve.assert_called_once()
+            _, kwargs = mock_solve.call_args
+            self.assertEqual(kwargs.get("index"), mock_index_cls.return_value)
+            self.assertEqual(kwargs.get("k"), 0)
+
+    @patch("predict.sys.exit", side_effect=SystemExit(1))
+    @patch("os.path.exists", return_value=False)
+    def test_predict_exits_when_rag_greater_than_zero_and_db_missing(self, mock_exists, mock_exit):
+        import predict
+        test_args = ["predict.py", "--input", "in.jsonl", "--output", "out.csv", "--rag", "1"]
+        with patch("sys.argv", test_args):
+            with self.assertRaises(SystemExit):
+                predict.main()
+            mock_exit.assert_called_once()
+
+    @patch("eval.solve")
+    @patch("copilot.rag.Index")
+    @patch("os.path.exists", return_value=True)
+    def test_eval_loads_index_when_rag_is_zero_and_db_exists(self, mock_exists, mock_index_cls, mock_solve):
+        import eval as eval_mod
+        mock_solve.return_value = {"answer": "A", "seconds": 0.1, "status": "ok", "prompt_tokens": 10, "retrieved": ""}
+        test_args = ["eval.py", "--input", "in.jsonl", "--limit", "1", "--rag", "0"]
+        with patch("sys.argv", test_args), \
+             patch("builtins.open", unittest.mock.mock_open(read_data='{"id": "p1", "text": "stem", "label": "A", "level": 1, "language": "eng", "options": {}}\n')):
+            eval_mod.main()
+            mock_index_cls.assert_called_once_with("data/index.db")
+            mock_solve.assert_called_once()
+            _, kwargs = mock_solve.call_args
+            self.assertEqual(kwargs.get("index"), mock_index_cls.return_value)
+            self.assertEqual(kwargs.get("k"), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

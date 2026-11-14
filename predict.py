@@ -30,11 +30,14 @@ def main():
     args = p.parse_args()
 
     index = None
-    if args.rag:
-        if not os.path.exists(args.index):
-            sys.exit(f"{args.index} not found. Build it first: python3 build_index.py")
+    if os.path.exists(args.index):
         from copilot.rag import Index
-        index = Index(args.index)
+        try:
+            index = Index(args.index)
+        except Exception:
+            index = None
+    elif args.rag:
+        sys.exit(f"{args.index} not found. Build it first: python3 build_index.py")
 
     with open(args.input, encoding="utf-8") as f:
         problems = [json.loads(line) for line in f if line.strip()]

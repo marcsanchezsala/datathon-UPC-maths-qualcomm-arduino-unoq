@@ -150,12 +150,22 @@ class TestSolveModes(unittest.TestCase):
     @patch("copilot.pipeline.answer_letter")
     def test_solve_router_eng_routes_to_math_url(self, mock_letter):
         mock_letter.return_value = ("B", {"prompt_n": 25, "confidence": 0.9})
-        problem = {"id": "p_eng", "language": "eng", "text": "What is 2+2?", "options": {"B": "4"}}
+        problem = {"id": "p_eng", "language": "eng", "level": 4, "text": "What is 2+2?", "options": {"B": "4"}}
         res = solve(problem, mode="router")
         self.assertEqual(res["answer"], "B")
         mock_letter.assert_called_once()
         expected_url = CONFIG.get("ROUTER_MATH_URL", "http://127.0.0.1:8083/v1/chat/completions")
         self.assertEqual(mock_letter.call_args.kwargs.get("url"), expected_url)
+
+    @patch("copilot.pipeline.answer_letter")
+    def test_solve_router_eng_high_level_routes_to_default_url(self, mock_letter):
+        mock_letter.return_value = ("A", {"prompt_n": 25, "confidence": 0.9})
+        problem = {"id": "p_eng_lvl7", "language": "eng", "level": 7, "text": "What is 2+2?", "options": {"A": "4"}}
+        res = solve(problem, mode="router")
+        self.assertEqual(res["answer"], "A")
+        mock_letter.assert_called_once()
+        from copilot.llm import URL
+        self.assertEqual(mock_letter.call_args.kwargs.get("url"), URL)
 
     @patch("copilot.pipeline.answer_letter")
     def test_solve_router_cat_routes_to_default_url(self, mock_letter):

@@ -17,7 +17,7 @@ MARGIN = 3.0  # seconds kept free for Python and for writing the answer
 
 
 def solve(problem, index=None, k=0, exclude_id=None, image_b64=None, llm_url=URL,
-          time_limit=TIME_LIMIT, mode=None):
+          time_limit=TIME_LIMIT, mode=None, debias_alpha=None):
     """Return {"answer", "seconds", "status", ...} for one problem.
 
     index and k turn on retrieval: the k most similar solved problems are
@@ -27,18 +27,30 @@ def solve(problem, index=None, k=0, exclude_id=None, image_b64=None, llm_url=URL
     start = time.perf_counter()
     result = {"answer": FALLBACK, "status": "ok", "prompt_tokens": 0, "retrieved": "", "examples": []}
     mode = mode or CONFIG.get("SOLVE_MODE", "hybrid")
+    if debias_alpha is None:
+        debias_alpha = float(CONFIG.get("DEBIAS_ALPHA", 0.0))
     try:
         if mode == "router":
             math_url = CONFIG.get("ROUTER_MATH_URL", "http://127.0.0.1:8083/v1/chat/completions")
-            target_url = math_url if problem.get("language") == "eng" else llm_url
+            max_eng_lvl = int(CONFIG.get("ROUTER_ENG_MAX_LEVEL", 5))
+            is_eng = problem.get("language") == "eng"
+            prob_lvl = int(problem.get("level") or 0)
+            use_math = is_eng and (prob_lvl <= max_eng_lvl)
+            target_url = math_url if use_math else llm_url
             return solve(problem, index=index, k=k, exclude_id=exclude_id, image_b64=image_b64,
-                         llm_url=target_url, time_limit=time_limit, mode="hybrid")
+                         llm_url=target_url, time_limit=time_limit, mode="hybrid",
+                         debias_alpha=debias_alpha)
 
         if "options" in problem and not problem.get("options") and not image_b64:
-            if index is not None and k > 0:
-                hits = index.search(problem, k=1, exclude_id=exclude_id, min_score=0.98)
-                if hits and hits[0][0] >= 0.98 and hits[0][1].get("label") in "ABCDE":
-                    result["answer"] = hits[0][1]["label"]
+            if index is not None:
+                try:
+                    min_tier0 = float(CONFIG.get("TIER0_RAG_MIN_SCORE", 0.94))
+                    hits = index.search(problem, k=1, exclude_id=exclude_id, min_score=min_tier0)
+                    if hits and hits[0][0] >= min_tier0 and hits[0][1].get("label") in "ABCDE":
+                        result["answer"] = hits[0][1]["label"]
+                        result["retrieved"] = f"{hits[0][1]['id']}:{hits[0][0]:.2f}"
+                except Exception:
+                    pass
             result["seconds"] = round(time.perf_counter() - start, 2)
             return result
 
@@ -63,11 +75,13 @@ def solve(problem, index=None, k=0, exclude_id=None, image_b64=None, llm_url=URL
             else:
                 remaining = time_limit - (time.perf_counter() - start) - MARGIN
                 letter, _t2 = answer_letter(problem, examples, timeout=max(remaining, 1.0),
-                                            image_b64=image_b64, url=llm_url, calibrate=False)
+                                            image_b64=image_b64, url=llm_url, calibrate=False,
+                                            debias_alpha=debias_alpha)
                 result["answer"] = letter
         elif mode == "hybrid":
             letter, timings = answer_letter(problem, examples, timeout=max(remaining, 1.0),
-                                            image_b64=image_b64, url=llm_url, calibrate=use_prior)
+                                            image_b64=image_b64, url=llm_url, calibrate=use_prior,
+                                            debias_alpha=debias_alpha)
             result["answer"] = letter
             result["prompt_tokens"] = timings.get("prompt_n", 0)
             confidence = timings.get("confidence", 1.0)
@@ -98,6 +112,7 @@ def solve(problem, index=None, k=0, exclude_id=None, image_b64=None, llm_url=URL
                 fallback_letter, _t = answer_letter(
                     problem, examples, timeout=max(remaining, 1.0),
                     image_b64=image_b64, url=llm_url, calibrate=False,
+                    debias_alpha=debias_alpha,
                 )
                 result["answer"] = fallback_letter if fallback_letter in "ABCDE" else FALLBACK
         elif mode == "elimination":
@@ -109,12 +124,14 @@ def solve(problem, index=None, k=0, exclude_id=None, image_b64=None, llm_url=URL
             else:
                 remaining = time_limit - (time.perf_counter() - start) - MARGIN
                 fb_letter, _t = answer_letter(problem, examples, timeout=max(remaining, 1.0),
-                                              image_b64=image_b64, url=llm_url, calibrate=False)
+                                              image_b64=image_b64, url=llm_url, calibrate=False,
+                                              debias_alpha=debias_alpha)
                 result["answer"] = fb_letter if fb_letter in "ABCDE" else FALLBACK
         else:
             letter, timings = answer_letter(problem, examples, timeout=max(remaining, 1.0),
                                             image_b64=image_b64, url=llm_url,
-                                            calibrate=(use_prior and mode != "baseline"))
+                                            calibrate=(use_prior and mode != "baseline"),
+                                            debias_alpha=debias_alpha)
             result["answer"] = letter
             result["prompt_tokens"] = timings.get("prompt_n", 0)
 

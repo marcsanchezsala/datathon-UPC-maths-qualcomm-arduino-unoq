@@ -14,6 +14,9 @@ SYSTEM = ("You solve multiple-choice math competition problems for school studen
 
 BOXED_GRAMMAR = 'root ::= "\\\\boxed{" [A-E] "}"'
 
+TRAIN_BIAS_CAT_3B = {'A': -0.470, 'B': 0.313, 'C': 0.288, 'D': -0.672, 'E': 0.061}
+TRAIN_BIAS_ENG_MATH = {'A': 0.376, 'B': 0.297, 'C': 0.113, 'D': -1.225, 'E': 0.004}
+
 _PRIOR_CACHE = {}
 
 
@@ -125,7 +128,7 @@ def build_messages(problem, examples=(), image_b64=None):
     return messages
 
 
-def answer_letter(problem, examples=(), timeout=60, image_b64=None, url=URL, calibrate=True):
+def answer_letter(problem, examples=(), timeout=60, image_b64=None, url=URL, calibrate=True, debias_alpha=None):
     """Return (letter, timings). The grammar makes any other output impossible."""
     response = post(url, {
         "messages": build_messages(problem, examples, image_b64),
@@ -143,7 +146,19 @@ def answer_letter(problem, examples=(), timeout=60, image_b64=None, url=URL, cal
     m_box = re.search(r"\\boxed\{\s*([A-E])\s*\}", content)
     gen_letter = m_box.group(1) if m_box else (re.findall(r"[A-E]", content)[-1] if re.findall(r"[A-E]", content) else "D")
     raw_lp = extract_letter_logprobs(response)
-    if raw_lp:
+    if debias_alpha is None:
+        debias_alpha = float(CONFIG.get("DEBIAS_ALPHA", 0.0))
+
+    if debias_alpha > 0.0 and raw_lp:
+        bias = TRAIN_BIAS_ENG_MATH if (problem.get("language") == "eng" or "math" in url or "8083" in url) else TRAIN_BIAS_CAT_3B
+        scores = {c: raw_lp.get(c, -15.0) - debias_alpha * bias.get(c, 0.0) for c in "ABCDE"}
+        m = max(scores.values())
+        exps = {c: math.exp(scores[c] - m) for c in "ABCDE"}
+        total = sum(exps.values())
+        probs = {c: exps[c] / total for c in "ABCDE"} if total > 0 else {c: 0.2 for c in "ABCDE"}
+        letter = max("ABCDE", key=scores.get)
+        timings["confidence"] = round(probs.get(letter, probs[max("ABCDE", key=probs.get)]), 4)
+    elif raw_lp:
         prior = get_prior_logprobs(url=url, timeout=min(timeout, 10)) if calibrate else {}
         scores = {c: raw_lp.get(c, -10.0) - prior.get(c, 0.0) for c in "ABCDE"}
         m = max(scores.values())
@@ -158,9 +173,9 @@ def answer_letter(problem, examples=(), timeout=60, image_b64=None, url=URL, cal
     return letter, timings
 
 
-def answer_jev(problem, examples=(), timeout=60, image_b64=None, url=URL):
+def answer_jev(problem, examples=(), timeout=60, image_b64=None, url=URL, debias_alpha=None):
     letter, timings = answer_letter(problem, examples=examples, timeout=timeout,
-                                    image_b64=image_b64, url=url, calibrate=True)
+                                    image_b64=image_b64, url=url, calibrate=True, debias_alpha=debias_alpha)
     return letter, timings.get("confidence", 1.0), timings
 
 
