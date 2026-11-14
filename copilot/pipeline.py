@@ -28,7 +28,8 @@ def solve(problem, index=None, k=0, exclude_id=None, image_b64=None, llm_url=URL
     try:
         examples = []
         if index is not None and k > 0:
-            hits = index.search(problem, k=k, exclude_id=exclude_id)
+            hits = index.search(problem, k=k, exclude_id=exclude_id,
+                                min_score=float(CONFIG.get("RAG_MIN_SCORE", 0.55)))
             examples = [p for _score, p in hits]
             result["examples"] = hits
             result["retrieved"] = ";".join(f"{p['id']}:{s:.2f}" for s, p in hits)

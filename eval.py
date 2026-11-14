@@ -47,7 +47,7 @@ def main():
     p.add_argument("--name", default="", help="a label for this experiment in ablations.csv")
     args = p.parse_args()
 
-    with open(args.input) as f:
+    with open(args.input, encoding="utf-8") as f:
         problems = [json.loads(line) for line in f if line.strip()]
     languages = set(filter(None, args.languages.split(",")))
     if languages:
@@ -67,7 +67,7 @@ def main():
     detail_path = f"results/eval-{stamp}-{name}.csv"
 
     rows = []
-    with open(detail_path, "w", newline="") as out:
+    with open(detail_path, "w", newline="", encoding="utf-8") as out:
         writer = csv.writer(out)
         writer.writerow(["id", "language", "level", "has_options", "label", "answer",
                          "correct", "seconds", "status", "prompt_tokens", "retrieved"])
@@ -112,7 +112,7 @@ def main():
 
     log = "results/ablations.csv"
     new = not os.path.exists(log)
-    with open(log, "a", newline="") as f:
+    with open(log, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if new:
             writer.writerow(["time", "name", "commit", "input", "languages", "n", "rag_k",

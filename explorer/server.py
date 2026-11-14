@@ -82,7 +82,7 @@ class App:
     def __init__(self, args):
         os.chdir(ROOT)
         self.images = args.images
-        with open(args.input) as f:
+        with open(args.input, encoding="utf-8") as f:
             self.problems = [json.loads(line) for line in f if line.strip()]
         self.by_key = {key_of(p): p for p in self.problems}
         self.index = Index(args.index) if os.path.exists(args.index) else None

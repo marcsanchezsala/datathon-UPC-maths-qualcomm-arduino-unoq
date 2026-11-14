@@ -34,10 +34,10 @@ def main():
         from copilot.rag import Index
         index = Index(args.index)
 
-    with open(args.input) as f:
+    with open(args.input, encoding="utf-8") as f:
         problems = [json.loads(line) for line in f if line.strip()]
 
-    with open(args.output, "w", newline="") as out:
+    with open(args.output, "w", newline="", encoding="utf-8") as out:
         writer = csv.writer(out)
         writer.writerow(["id", "language", "answer", "seconds", "status"])
         for n, problem in enumerate(problems, 1):
