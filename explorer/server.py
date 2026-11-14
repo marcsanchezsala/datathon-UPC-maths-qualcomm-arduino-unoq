@@ -10,6 +10,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import sys
 import traceback
 import urllib.error
@@ -103,6 +104,7 @@ class App:
         # Teaching state
         self.hint_state = {}  # key -> {level, history, reasoning, ...}
         self.student_profile = {}  # key -> {correct, wrong, level}
+        self.hint_cache = {}  # (key, level) -> hint, so a repeated click does not cost 10-30 s
         # Images the page may ask for
         self.image_keys = set(self.by_key)
         if self.index:
@@ -140,7 +142,11 @@ class App:
         with open(os.path.join(self.images, key + ".png"), "rb") as f:
             return base64.b64encode(f.read()).decode()
 
-    def check(self, key, choice):
+    def check(self, key, choice, reveal=True):
+        """Check a choice. The label is only sent back if it is right, or if `reveal`.
+
+        With reveal=False (teaching mode) a wrong try does not give the answer away.
+        """
         label = self.by_key[key]["label"]
         correct = choice == label
         state = self._get_or_create_state(key)
@@ -149,7 +155,11 @@ class App:
             state["score_correct"] = state.get("score_correct", 0) + 1
         else:
             state["score_wrong"] = state.get("score_wrong", 0) + 1
-        return {"correct": correct, "label": label}
+        return {"correct": correct, "label": label if (correct or reveal) else None}
+
+    def reveal(self, key):
+        """The student gave up: show the answer."""
+        return {"label": self.by_key[key]["label"]}
 
     def _get_or_create_state(self, key):
         if key not in self.hint_state:
@@ -178,10 +188,33 @@ class App:
         except (TypeError, ValueError):
             level = state["level"]
         level = max(1, min(level, MAX_HINT_LEVEL))
+        cached = self.hint_cache.get((key, level))
+        if cached:
+            state["level"] = min(level + 1, MAX_HINT_LEVEL)
+            return cached
         result = tutor_generate(problem, index=self.index, hint_level=level, timeout=120)
+        if self._leaks(problem, result.get("text", "")):
+            result = {
+                "type": "hint", "level": level, "withheld": True,
+                "text": "This hint would give the answer away, so it was withheld. "
+                        "Write your own steps and use \"Check your reasoning\", or ask for the next hint.",
+            }
+        elif result.get("type") != "error":
+            self.hint_cache[(key, level)] = result
         state["level"] = min(level + 1, MAX_HINT_LEVEL)
         state["history"].append(result)
         return result
+
+    @staticmethod
+    def _leaks(problem, text):
+        """True if a hint gives away the correct option (checked in code, not by the model)."""
+        label = problem["label"]
+        text = text or ""
+        if re.search(rf"\b(?:answer|option|letter|choice)\s*(?:is|:)?\s*\(?{label}\b", text, re.I):
+            return True
+        value = str((problem.get("options") or {}).get(label, "")).strip()
+        # One-character values ("5") appear in almost any hint, so only check longer ones.
+        return len(value) >= 2 and re.search(rf"(?<![\w.]){re.escape(value)}(?![\w.])", text) is not None
 
     def get_solution(self, key):
         """Force the solution (level 4)."""
@@ -366,7 +399,9 @@ def make_handler(app):
             try:
                 # Existing endpoints
                 if self.path == "/api/check" and body.get("choice") in list("ABCDE"):
-                    return self.send(200, app.check(key, body["choice"]))
+                    return self.send(200, app.check(key, body["choice"], bool(body.get("reveal", True))))
+                if self.path == "/api/reveal":
+                    return self.send(200, app.reveal(key))
                 if self.path == "/api/ask":
                     return self.send(
                         200,

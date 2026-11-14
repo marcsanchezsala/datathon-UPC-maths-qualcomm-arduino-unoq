@@ -95,8 +95,10 @@
 
     <section>
       <h2>1. Your answer</h2>
+      <label class="hint"><input type="checkbox" id="teach" checked> Teaching mode: don't reveal the answer after a wrong try</label>
       <div class="letters" id="mine"></div>
       <div class="verdict" id="my-verdict"></div>
+      <button class="secondary" id="giveup" hidden style="margin-top:6px">Give up and show the answer</button>
     </section>
 
     <section>
@@ -125,7 +127,7 @@
     <section>
       <h2>2c. Check your reasoning</h2>
       <div class="row">
-        <input type="text" id="reasoning-input" placeholder="Type your answer/number (e.g. '5')" style="flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:4px;font:inherit;background:#fff;">
+        <textarea id="reasoning-input" rows="3" placeholder="Explain your steps (Ctrl+Enter to check)" style="flex:1;min-width:240px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;font:inherit;background:#fff;resize:vertical;"></textarea>
         <button class="secondary" id="reasoning-check">Check</button>
       </div>
       <div id="reasoning-result"></div>
@@ -163,7 +165,7 @@ const api = async (path, body) => {
 };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
-let info, all = [], shown = [], current = null, myChoice = null;
+let info, all = [], shown = [], current = null, myChoice = null, tried = new Set();
 const results = {};  // key -> {me: bool, model: bool}
 const MAX_HINTS = 3;  // rungs 1-3 are hints; the solution is always a separate, deliberate click
 
@@ -188,7 +190,7 @@ function renderList() {
 
 async function open(key) {
   current = await api("/api/problem?key=" + encodeURIComponent(key));
-  myChoice = null;
+  myChoice = null; tried = new Set(); $("giveup").hidden = true;
   $("meta").textContent = `${current.id} · ${current.language} · level ${current.level}${current.year ? " · " + current.year : ""}`;
   $("img").style.display = current.image ? "" : "none";
   if (current.image) { $("img").src = "/image/" + encodeURIComponent(current.key); $("img").alt = "Problem " + current.id; }
@@ -211,18 +213,52 @@ async function open(key) {
   loadSimilar();
 }
 
-async function answer(letter) {
-  if (!current || myChoice) return;
-  myChoice = letter;
-  const r = await api("/api/check", {key: current.key, choice: letter});
-  (results[current.key] ||= {}).me = r.correct;
+// Marks the final state of the five letters once the answer is known.
+function paintAnswer(label) {
   document.querySelectorAll("#mine button").forEach(b => {
     b.disabled = true;
-    if (b.dataset.l === r.label) b.classList.add("right");
-    else if (b.dataset.l === letter) b.classList.add("wrong");
+    if (b.dataset.l === label) b.classList.add("right");
+    else if (tried.has(b.dataset.l)) b.classList.add("wrong");
   });
-  $("my-verdict").textContent = r.correct ? "Correct!" : `Not this time: the answer is ${r.label}.`;
-  $("my-verdict").className = "verdict " + (r.correct ? "ok" : "bad");
+  $("giveup").hidden = true;
+}
+
+// In teaching mode a wrong try does NOT reveal the answer: the student can try
+// another option, ask for a hint, or give up. The score counts the first try only.
+async function answer(letter) {
+  if (!current || myChoice || tried.has(letter)) return;
+  const key = current.key, teach = $("teach").checked;
+  const r = await api("/api/check", {key, choice: letter, reveal: !teach});
+  if (!current || current.key !== key) return;
+  const res = (results[key] ||= {});
+  if (!("me" in res)) res.me = r.correct;
+  tried.add(letter);
+  if (r.label) {  // right, or the server revealed it
+    myChoice = letter;
+    paintAnswer(r.label);
+    $("my-verdict").textContent = r.correct ? "Correct!" : `Not this time: the answer is ${r.label}.`;
+    $("my-verdict").className = "verdict " + (r.correct ? "ok" : "bad");
+  } else {
+    const b = document.querySelector(`#mine button[data-l="${letter}"]`);
+    b.classList.add("wrong"); b.disabled = true;
+    $("my-verdict").textContent = `Not yet (${tried.size} wrong). Try another option or ask for a hint.`;
+    $("my-verdict").className = "verdict bad";
+    $("giveup").hidden = false;
+  }
+  score(); renderList();
+}
+
+async function giveUp() {
+  if (!current || myChoice) return;
+  const key = current.key;
+  const r = await api("/api/reveal", {key});
+  if (!current || current.key !== key) return;
+  myChoice = "-";
+  const res = (results[key] ||= {});
+  if (!("me" in res)) res.me = false;
+  paintAnswer(r.label);
+  $("my-verdict").textContent = `The answer is ${r.label}.`;
+  $("my-verdict").className = "verdict bad";
   score(); renderList();
 }
 
@@ -311,13 +347,16 @@ async function getHint() {
   const rung = hist.filter(h => h.type !== "error" && h.type !== "solution").length + 1;
   if (rung > MAX_HINTS) return;
   const btn = $("get-hint");
+  const start = Date.now();
   btn.disabled = true; btn.textContent = "Thinking…";
+  const tick = setInterval(() => btn.textContent = `Thinking… ${((Date.now() - start) / 1000).toFixed(0)} s`, 500);
   try {
     const r = await api("/api/hint", { key, type: rung });
     ((window._hints ||= {})[key] ||= []).push(r);
   } catch (e) {
     ((window._hints ||= {})[key] ||= []).push({ type: "error", text: e.message });
   } finally {
+    clearInterval(tick);
     btn.textContent = "Get hint";
     if (current && current.key === key) { renderHints(); syncHintUI(); }
   }
@@ -458,7 +497,8 @@ $("get-hint").addEventListener("click", getHint);
 $("show-solution").addEventListener("click", showSolution);
 $("reset-hints").addEventListener("click", resetHints);
 $("reasoning-check").addEventListener("click", checkReasoning);
-$("reasoning-input").addEventListener("keydown", e => { if (e.key === "Enter") checkReasoning(); });
+$("reasoning-input").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) checkReasoning(); });
+$("giveup").addEventListener("click", giveUp);
 $("trans-btn").addEventListener("click", translate);
 $("next").addEventListener("click", () => next(false));
 $("random").addEventListener("click", () => next(true));
