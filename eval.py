@@ -45,6 +45,8 @@ def main():
     p.add_argument("--rag", type=int, default=0, metavar="K")
     p.add_argument("--index", default="data/index.db")
     p.add_argument("--name", default="", help="a label for this experiment in ablations.csv")
+    p.add_argument("--mode", choices=["hybrid", "tier2", "tier1", "baseline", "consistency", "elimination"], default=None,
+                   help="solver architecture mode")
     args = p.parse_args()
 
     with open(args.input, encoding="utf-8") as f:
@@ -63,7 +65,9 @@ def main():
 
     os.makedirs("results", exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    name = args.name or (f"rag{args.rag}" if args.rag else "baseline")
+    effective_mode = args.mode or CONFIG.get("SOLVE_MODE", "hybrid")
+    default_name = f"{effective_mode}-rag{args.rag}" if args.rag else effective_mode
+    name = args.name or default_name
     detail_path = f"results/eval-{stamp}-{name}.csv"
 
     rows = []
@@ -72,7 +76,7 @@ def main():
         writer.writerow(["id", "language", "level", "has_options", "label", "answer",
                          "correct", "seconds", "status", "prompt_tokens", "retrieved"])
         for n, problem in enumerate(problems, 1):
-            result = solve(problem, index=index, k=args.rag, exclude_id=problem["id"])
+            result = solve(problem, index=index, k=args.rag, exclude_id=problem["id"], mode=args.mode)
             correct = result["answer"] == problem["label"]
             row = {**problem, **result, "correct": correct, "has_options": bool(problem.get("options"))}
             rows.append(row)

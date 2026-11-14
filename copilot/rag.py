@@ -45,6 +45,7 @@ class Index:
             self.rows.append((key, json.loads(problem), vec))
         db.close()
         self.languages = {p.get("language") for _, p, _ in self.rows}
+        self.has_any_options = any(bool(stored.get("options")) for _, stored, _ in self.rows)
 
     def search(self, problem, k=1, exclude_id=None, min_score=0.0, only_with_options=True):
         """Return up to k (score, problem) pairs, most similar first.
@@ -54,13 +55,15 @@ class Index:
         """
         if not self.rows or k <= 0:
             return []
+        has_any_options = getattr(self, "has_any_options", any(bool(stored.get("options")) for _, stored, _ in self.rows))
+        effective_only_with_options = only_with_options and has_any_options
         query = embed([embed_text(problem)], query=True)[0]
         lang = problem.get("language") if problem.get("language") in self.languages else None
         scored = []
         for _key, stored, vec in self.rows:
             if exclude_id and stored["id"] == exclude_id:
                 continue
-            if only_with_options and not stored.get("options"):
+            if effective_only_with_options and not stored.get("options"):
                 continue
             if lang and stored.get("language") != lang:
                 continue

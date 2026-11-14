@@ -168,6 +168,24 @@ class TestRagIndex(unittest.TestCase):
                 self.assertEqual(res_k0, [])
                 mock_embed.assert_not_called()
 
+    def test_search_no_options_index_auto_relaxes_only_with_options(self):
+        # Index with NO options (e.g. knowledge.db) returns hits even when only_with_options=True
+        knowledge_items = [
+            {"id": "rule_1", "language": "eng", "text": "Rule 1", "topic": "geometry"},
+            {"id": "rule_2", "language": "cat", "text": "Rule 2", "topic": "geometry"},
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "knowledge_test.db")
+            with patch("copilot.rag.embed", return_value=[[1.0, 0.0], [0.8, 0.0]]):
+                list(rag.build(db_path, knowledge_items))
+                idx = Index(db_path)
+                self.assertFalse(idx.has_any_options)
+
+                with patch("copilot.rag.embed", return_value=[[1.0, 0.0]]):
+                    hits = idx.search({"text": "Rule 1", "language": "eng"}, k=1, only_with_options=True)
+                    self.assertEqual(len(hits), 1)
+                    self.assertEqual(hits[0][1]["id"], "rule_1")
+
 
 class TestPipelineSolve(unittest.TestCase):
     def test_solve_passes_min_score_and_handles_empty_hits(self):
