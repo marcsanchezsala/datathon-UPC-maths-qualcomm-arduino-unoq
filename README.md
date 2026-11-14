@@ -722,7 +722,7 @@ On your laptop:
 python3 laptop/prepare_m3kang.py --languages eng,cat
 ```
 
-It downloads the first `high_quality` file of the dataset (393 MB, once), keeps English and Catalan, reads the options from each image, and splits the problems into training and validation sets. It takes about 15 minutes per language. If you stop it, run it again: it caches the OCR results in `data/.ocr_cache.jsonl`.
+It downloads the first `high_quality` file of the dataset (393 MB, once), keeps English and Catalan, reads the options from each image, and splits the problems into training and validation sets. It takes about 15 minutes per language. If you stop it, run it again: it caches the OCR results in `data/.ocr_cache_v2.jsonl`.
 
 To test it quickly first, add `--limit 20`.
 
@@ -739,26 +739,33 @@ Useful options:
 
 The same problem has the same `id` in every language, so the split is made by `id`: a problem's translations are never split between training and validation.
 
-**Check:** the script ends with a summary like this one, from our English run:
+**Check:** the script ends with a summary like this one, from our English and Catalan run:
 
 ```
 Wrote data/train.jsonl and data/val.jsonl
+  train cat: 1466
   train eng: 1466
+  val   cat: 281
   val   eng: 281
-Options read from the image: 1078/1747 (62%)
-  of which text-only problems: 601/811 (74%)
+Options read from the image: 2946/3494 (84%)
+  of which text-only problems: 1582/1622 (98%)
+  same in two languages: 2872, one reading only: 74, copied from another language: 17, dropped because languages disagree: 0
 Most common answer in train: D (25.0%). ...
 ```
 
-### 9.3 What the OCR gets wrong
+### 9.3 How the options are read, and what still fails
 
-OCR reads all five options for 62% of the problems. The rest have `"options": {}`, and the model sees only the question. The usual reasons:
+The script reads each image in two passes. First, OCR on the whole image finds the markers `A)` to `E)`. Then it cuts each option out of the image along its ink and reads it again on its own, marker included. That second pass reads the serif `C)` that the first pass often misses, leaves out figure labels on the same row, reads stacked fractions as `3/4`, and exponents and degrees as `2^13`, `n³` and `78°`.
 
-- The options are pictures: shapes, graphs, or figures
-- Fractions and formulas come out garbled, such as `1/2` read as `12`
-- In a few problems, two options come out the same
+When a reading is in doubt, the options stay empty (`"options": {}`) instead of holding a wrong value. The usual reasons:
 
-Better option reading is one of the easiest ways to improve your score. Look at the problems with empty options with `--save-images`.
+- The options are pictures: shapes, graphs, mirrored digits, or circled letters
+- A square root, an exponent, or a prime (`17° 30′`) that the OCR can't place with confidence
+- Nested formulas, such as a fraction inside a root
+
+What can still be wrong: an italic `x` sometimes reads as `c`, and a square root inside a fraction can lose its `√`. In a few problems two options really are the same in the image.
+
+Better option reading is one of the easiest ways to improve your score. Look at the problems with empty options with `--save-images`, and run `python3 laptop/test_prepare_m3kang.py` after changing the reader.
 
 ### 9.4 The data format
 
@@ -769,6 +776,11 @@ One problem per line in `data/train.jsonl` and `data/val.jsonl`:
  "text": "13. For 3 days, the cat Joy has been catching mice. ...",
  "options": {"A": "12", "B": "15", "C": "18", "D": "20", "E": "24"}, "label": "C"}
 ```
+
+Two more fields say where the options come from. The same problem has the same options in every language when they have no words, so the script compares the translations:
+
+- `options_check`: `agree` (two languages read the same options), `single` (only one reading, for example options with words), `conflict` (the languages disagree, so the options were dropped), or `none` (no options)
+- `options_source`: the language the options were read from. It differs from `language` when this language's image couldn't be read and the options were copied from a translation.
 
 **Don't commit these files, or share them outside the datathon.** M3Kang is licensed for research use only. `.gitignore` already excludes them.
 
