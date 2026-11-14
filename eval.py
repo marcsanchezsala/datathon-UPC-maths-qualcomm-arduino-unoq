@@ -45,7 +45,7 @@ def main():
     p.add_argument("--rag", type=int, default=0, metavar="K")
     p.add_argument("--index", default="data/index.db")
     p.add_argument("--name", default="", help="a label for this experiment in ablations.csv")
-    p.add_argument("--mode", choices=["hybrid", "tier2", "tier1", "baseline", "consistency", "elimination"], default=None,
+    p.add_argument("--mode", choices=["hybrid", "tier2", "tier1", "baseline", "consistency", "elimination", "router"], default=None,
                    help="solver architecture mode")
     args = p.parse_args()
 

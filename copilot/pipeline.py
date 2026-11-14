@@ -28,6 +28,12 @@ def solve(problem, index=None, k=0, exclude_id=None, image_b64=None, llm_url=URL
     result = {"answer": FALLBACK, "status": "ok", "prompt_tokens": 0, "retrieved": "", "examples": []}
     mode = mode or CONFIG.get("SOLVE_MODE", "hybrid")
     try:
+        if mode == "router":
+            math_url = CONFIG.get("ROUTER_MATH_URL", "http://127.0.0.1:8083/v1/chat/completions")
+            target_url = math_url if problem.get("language") == "eng" else llm_url
+            return solve(problem, index=index, k=k, exclude_id=exclude_id, image_b64=image_b64,
+                         llm_url=target_url, time_limit=time_limit, mode="hybrid")
+
         if "options" in problem and not problem.get("options") and not image_b64:
             if index is not None and k > 0:
                 hits = index.search(problem, k=1, exclude_id=exclude_id, min_score=0.98)

@@ -147,6 +147,26 @@ class TestSolveModes(unittest.TestCase):
         _, kwargs = mock_letter.call_args
         self.assertFalse(kwargs.get("calibrate", True))
 
+    @patch("copilot.pipeline.answer_letter")
+    def test_solve_router_eng_routes_to_math_url(self, mock_letter):
+        mock_letter.return_value = ("B", {"prompt_n": 25, "confidence": 0.9})
+        problem = {"id": "p_eng", "language": "eng", "text": "What is 2+2?", "options": {"B": "4"}}
+        res = solve(problem, mode="router")
+        self.assertEqual(res["answer"], "B")
+        mock_letter.assert_called_once()
+        expected_url = CONFIG.get("ROUTER_MATH_URL", "http://127.0.0.1:8083/v1/chat/completions")
+        self.assertEqual(mock_letter.call_args.kwargs.get("url"), expected_url)
+
+    @patch("copilot.pipeline.answer_letter")
+    def test_solve_router_cat_routes_to_default_url(self, mock_letter):
+        mock_letter.return_value = ("D", {"prompt_n": 25, "confidence": 0.9})
+        problem = {"id": "p_cat", "language": "cat", "text": "Quant és 2+2?", "options": {"D": "4"}}
+        res = solve(problem, mode="router")
+        self.assertEqual(res["answer"], "D")
+        mock_letter.assert_called_once()
+        from copilot.llm import URL
+        self.assertEqual(mock_letter.call_args.kwargs.get("url"), URL)
+
 
 class TestEvalArgparse(unittest.TestCase):
     def test_eval_mode_choices_include_new_modes(self):
@@ -160,11 +180,13 @@ class TestEvalArgparse(unittest.TestCase):
             # Check parser definition in eval
             import eval as ev
             p = argparse.ArgumentParser()
-            p.add_argument("--mode", choices=["hybrid", "tier2", "tier1", "baseline", "consistency", "elimination"])
+            p.add_argument("--mode", choices=["hybrid", "tier2", "tier1", "baseline", "consistency", "elimination", "router"])
             args = p.parse_args(["--mode", "consistency"])
             self.assertEqual(args.mode, "consistency")
             args2 = p.parse_args(["--mode", "elimination"])
             self.assertEqual(args2.mode, "elimination")
+            args3 = p.parse_args(["--mode", "router"])
+            self.assertEqual(args3.mode, "router")
 
 
 if __name__ == "__main__":
