@@ -46,6 +46,7 @@
   .primary { padding: 8px 16px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
   .primary:disabled { opacity: .5; cursor: default; }
   .secondary { padding: 8px 16px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+  .secondary:disabled { opacity: .5; cursor: default; }
   table { border-collapse: collapse; margin-top: 10px; font-size: 14px; }
   td { padding: 3px 14px 3px 0; } td:first-child { color: var(--muted); }
   details { margin-top: 10px; } summary { cursor: pointer; color: var(--accent); }
@@ -59,6 +60,10 @@
   .hint-box .level-badge { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 13px; margin-right: 6px; }
   .solution-box { background: var(--ok-bg); border-color: var(--ok); }
   .error-box { background: var(--bad-bg); border-color: var(--bad); }
+  .reasoning-box { background: #e6f4fa; border: 1px solid #4a90d9; border-radius: 6px; padding: 8px 12px; margin-top: 8px; font-size: 13px; }
+  .trans-box { background: #f4e6fa; border: 1px solid #904ab9; border-radius: 6px; padding: 8px 12px; margin-top: 8px; font-size: 13px; white-space: pre-wrap; }
+  .counter-box { background: #fce8e6; border: 1px solid #b3261e; border-radius: 6px; padding: 8px 12px; margin-top: 8px; font-size: 13px; }
+  .error-tag { background: #fff3cd; color: #856404; border: 1px solid #ffc107; border-radius: 3px; padding: 2px 6px; font-size: 12px; display: inline-block; margin: 2px 2px; }
   kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 12px; background: #fff; }
   @media (max-width: 800px) { main { grid-template-columns: 1fr; } aside { position: static; height: 300px; } }
 </style>
@@ -109,12 +114,30 @@
     <section>
       <h2>2b. Get a hint (teaching mode)</h2>
       <div class="row" style="margin-bottom:6px">
-        <button class="primary" id="get-hint" disabled>Get hint</button>
+        <button class="primary" id="get-hint">Get hint</button>
         <button class="primary" id="show-solution" style="background:var(--bad)" disabled>Show solution</button>
         <button class="secondary" id="reset-hints" style="font-size:12px">Reset</button>
-        <span class="hint" id="hint-status">Answer a problem first to get hints</span>
+        <span class="hint" id="hint-status">Click "Get hint" for the first hint.</span>
       </div>
       <div id="hint-history"></div>
+    </section>
+
+    <section>
+      <h2>2c. Check your reasoning</h2>
+      <div class="row">
+        <input type="text" id="reasoning-input" placeholder="Type your answer/number (e.g. '5')" style="flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:4px;font:inherit;background:#fff;">
+        <button class="secondary" id="reasoning-check">Check</button>
+      </div>
+      <div id="reasoning-result"></div>
+    </section>
+
+    <section>
+      <h2>2d. Translate</h2>
+      <div class="row">
+        <select id="trans-lang" style="padding:4px 6px;border:1px solid var(--line);border-radius:4px;font:inherit;background:#fff;"></select>
+        <button class="secondary" id="trans-btn">Translate</button>
+      </div>
+      <div id="trans-result" style="margin-top:6px;font-size:13px;"></div>
     </section>
 
     <section>
@@ -125,7 +148,7 @@
 
     <section class="row">
       <button class="primary" id="next">Next problem</button>
-      <span class="hint">Keys: <kbd>A</kbd>–<kbd>E</kbd> answer · <kbd>M</kbd> ask model · <kbd>H</kbd> hint · <kbd>S</kbd> solution · <kbd>N</kbd> next · <kbd>R</kbd> random</span>
+      <span class="hint">Keys: <kbd>A</kbd>–<kbd>E</kbd> answer · <kbd>M</kbd> ask the model · <kbd>N</kbd> next · <kbd>R</kbd> random</span>
     </section>
   </div>
 </main>
@@ -133,7 +156,8 @@
 const $ = id => document.getElementById(id);
 const api = async (path, body) => {
   const r = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
-  const data = await r.json();
+  let data;
+  try { data = await r.json(); } catch { throw new Error(`${path}: HTTP ${r.status}`); }
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
 };
@@ -141,6 +165,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", 
 
 let info, all = [], shown = [], current = null, myChoice = null;
 const results = {};  // key -> {me: bool, model: bool}
+const MAX_HINTS = 3;  // rungs 1-3 are hints; the solution is always a separate, deliberate click
 
 function setPill(id, up, text) { const el = $(id); el.textContent = text; el.className = "pill " + (up ? "up" : "down"); }
 
@@ -174,13 +199,12 @@ async function open(key) {
     : "OCR couldn't read the options. Without the image, the model sees only the question.";
   $("mine").innerHTML = "ABCDE".split("").map(l => `<button data-l="${l}">${l}</button>`).join("");
   $("my-verdict").textContent = ""; $("my-verdict").className = "verdict";
+  $("reasoning-input").value = ""; $("reasoning-result").innerHTML = "";
+  $("reasoning-check").disabled = false;
+  $("trans-result").innerHTML = ""; $("trans-btn").disabled = false;
   $("model").innerHTML = ""; $("asking").textContent = "";
-  myChoice = null;
-  myHintLevel = 1;
-  $("hint-history").innerHTML = "";
-  $("hint-status").textContent = "Answer a problem first to get hints.";
-  $("get-hint").disabled = true;
-  $("show-solution").disabled = true;
+  renderHints();
+  syncHintUI();
   renderList();
   const row = document.querySelector(`#list div[data-key="${CSS.escape(key)}"]`);
   if (row) row.scrollIntoView({block: "nearest"});
@@ -199,9 +223,6 @@ async function answer(letter) {
   });
   $("my-verdict").textContent = r.correct ? "Correct!" : `Not this time: the answer is ${r.label}.`;
   $("my-verdict").className = "verdict " + (r.correct ? "ok" : "bad");
-  // Enable hint buttons after answering (student can always learn more)
-  $("get-hint").disabled = false;
-  if (myHintLevel > 1) $("show-solution").disabled = false;
   score(); renderList();
 }
 
@@ -245,98 +266,145 @@ function nextStep(r) {
 }
 
 // ── Teaching: hint ladder ──────────────────────────────────────────────
+// The client owns the ladder: it counts the hints already shown for the current
+// problem and asks the server for exactly that rung (1-3). The solution only
+// appears when the student clicks "Show solution" on purpose.
 
-let myHintLevel = 1;  // current rung (1–4)
+function hintHistory() {
+  if (!current) return [];
+  return ((window._hints ||= {})[current.key] ||= []);
+}
 
 function renderHints() {
   const container = $("hint-history");
-  if (!container) return;
-  // We store hints in a simple array on the window object keyed by problem key
-  if (!window._hints) window._hints = {};
-  const history = window._hints[current.key] || [];
-  if (history.length === 0) {
-    container.innerHTML = `<div class="hint-box"><span class="rung">Waiting for answer</span><br>Answer a problem first to get progressive hints.</div>`;
-    return;
-  }
+  if (!current) { container.innerHTML = ""; return; }
+  const history = hintHistory();
+  if (history.length === 0) { container.innerHTML = ""; return; }
+  const rungLabels = { 1: "RAG example (similar problem)", 2: "Method hint", 3: "Model hint", 4: "Full solution" };
   container.innerHTML = history.map((h, i) => {
     if (h.type === "error") return `<div class="hint-box error-box"><b>⚠️ Error:</b> ${esc(h.text)}</div>`;
     const boxClass = h.type === "solution" ? "solution-box" : "";
-    const rungLabels = { 1: "RAG example (similar problem)", 2: "Method hint", 3: "Model hint", 4: "Full solution" };
     return `<div class="hint-box ${boxClass}"><span class="level-badge">${i + 1}</span><span class="rung">${esc(rungLabels[h.level] || "Hint")}</span><div style="margin-top:4px">${esc(h.text)}</div></div>`;
   }).join("");
-  container.lastElementChild?.scrollIntoView({ behavior: "smooth" });
+  container.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// Sets the buttons and the status line from the hint history of the current problem.
+function syncHintUI() {
+  const history = hintHistory();
+  const hints = history.filter(h => h.type !== "error" && h.type !== "solution").length;
+  const solved = history.some(h => h.type === "solution");
+  $("get-hint").disabled = solved || hints >= MAX_HINTS;
+  $("show-solution").disabled = solved || hints < MAX_HINTS;
+  $("show-solution").textContent = solved ? "Shown" : "Show solution";
+  $("hint-status").textContent =
+    solved ? "Solution revealed."
+    : hints >= MAX_HINTS ? "No more hints. Click \"Show solution\" if you want it."
+    : hints === 0 ? "Click \"Get hint\" for the first hint."
+    : `Hint ${hints}/${MAX_HINTS}. Click "Get hint" for more help.`;
 }
 
 async function getHint() {
   if (!current) return;
+  const key = current.key;
+  const hist = hintHistory();
+  const rung = hist.filter(h => h.type !== "error" && h.type !== "solution").length + 1;
+  if (rung > MAX_HINTS) return;
   const btn = $("get-hint");
-  btn.disabled = true;
-  btn.textContent = "Thinking…";
+  btn.disabled = true; btn.textContent = "Thinking…";
   try {
-    const r = await api("/api/hint", { key: current.key });
-    (window._hints ||= {})[current.key] = (window._hints[current.key] || []);
-    (window._hints[current.key]).push(r);
-    renderHints();
-    // Enable next rung or solution button
-    if (r.type === "solution") {
-      btn.disabled = true;
-      $("show-solution").disabled = true;
-      $("hint-status").textContent = `Solution provided (hint level ${myHintLevel - 1}/4).`;
-    } else {
-      myHintLevel = r.level;
-      if (myHintLevel > 3) {
-        $("show-solution").disabled = false;
-        $("hint-status").textContent = `Hint ${myHintLevel - 1}/4. Click "Show solution" for the answer.`;
-      } else {
-        $("hint-status").textContent = `Hint ${myHintLevel}/4. Click "Get hint" for more help.`;
-      }
-    }
+    const r = await api("/api/hint", { key, type: rung });
+    ((window._hints ||= {})[key] ||= []).push(r);
   } catch (e) {
-    alert("Error: " + e.message);
+    ((window._hints ||= {})[key] ||= []).push({ type: "error", text: e.message });
   } finally {
-    btn.disabled = false;
     btn.textContent = "Get hint";
+    if (current && current.key === key) { renderHints(); syncHintUI(); }
   }
 }
 
 async function showSolution() {
   if (!current) return;
+  const key = current.key;
   const btn = $("show-solution");
-  btn.disabled = true;
-  btn.textContent = "Loading…";
+  btn.disabled = true; btn.textContent = "Loading…";
   try {
-    const r = await api("/api/solution", { key: current.key });
-    (window._hints ||= {})[current.key] = (window._hints[current.key] || []);
-    (window._hints[current.key]).push(r);
-    renderHints();
-    btn.disabled = true;
-    btn.textContent = "Shown";
-    $("hint-status").textContent = "Solution revealed.";
+    const r = await api("/api/solution", { key });
+    ((window._hints ||= {})[key] ||= []).push(r.type ? r : { ...r, type: "solution", level: 4 });
   } catch (e) {
-    alert("Error: " + e.message);
-    btn.disabled = false;
-    btn.textContent = "Show solution";
+    ((window._hints ||= {})[key] ||= []).push({ type: "error", text: e.message });
+  } finally {
+    if (current && current.key === key) { renderHints(); syncHintUI(); }
   }
 }
 
-function clearHints() {
-  if (current) {
-    if (window._hints) delete window._hints[current.key];
-  }
-  myHintLevel = 1;
+async function resetHints() {
+  if (!current) return;
+  try { await api("/api/hint-reset", { key: current.key }); } catch {}
+  if (window._hints) delete window._hints[current.key];
   renderHints();
-  $("hint-status").textContent = "Answer a problem first to get hints.";
-  $("get-hint").disabled = !myChoice;
-  $("show-solution").disabled = !myChoice;
+  syncHintUI();
 }
 
-function resetAllHints() {
-  if (window._hints) window._hints = {};
-  myHintLevel = 1;
-  renderHints();
-  $("hint-status").textContent = "All hint states cleared.";
-  $("get-hint").disabled = true;
-  $("show-solution").disabled = true;
+// ── Teaching: check reasoning and translate ────────────────────────────
+
+async function checkReasoning() {
+  if (!current) return;
+  const reasoning = $("reasoning-input").value.trim();
+  if (!reasoning) { $("reasoning-result").innerHTML = `<span class="hint">Write your answer or your steps first.</span>`; return; }
+  const key = current.key;
+  $("reasoning-check").disabled = true;
+  $("reasoning-result").innerHTML = `<span class="hint">Checking…</span>`;
+  try {
+    const r = await api("/api/reasoning", { key, reasoning });
+    if (!current || current.key !== key) return;
+    if (r.type === "counterexample") {
+      let html = `<div class="counter-box">⚡ <b>Counterexample:</b> ${esc(r.text || "")}`;
+      if (r.counterexample) {
+        html += `<br><small>Similar ${esc(r.counterexample.id)} (sim ${r.counterexample.score}): if you solve like yours → ${esc(r.counterexample.wrong_option)}) ${esc(r.counterexample.wrong_value)}, correct is ${esc(r.counterexample.correct_letter)})</small>`;
+      }
+      html += `</div>`;
+      $("reasoning-result").innerHTML = html;
+    } else if (r.type === "correction") {
+      let html = `<div class="reasoning-box">✎ <b>Correction:</b> ${esc(r.text || "")}`;
+      if (r.detected_errors) {
+        html += r.detected_errors.map(e => `<div style="margin-top:4px"><span class="error-tag">⚠ ${esc(e)}</span></div>`).join("");
+      }
+      html += `</div>`;
+      $("reasoning-result").innerHTML = html;
+    } else if (r.type === "rule_based") {
+      const msg = r.text || (r.detected_errors && r.detected_errors[0]) || "No specific error detected. Try again!";
+      $("reasoning-result").innerHTML = `<div class="reasoning-box">⚠ ${esc(msg)}</div>`;
+    } else {
+      $("reasoning-result").innerHTML = `<div class="reasoning-box">${esc(r.text || "No feedback available.")}</div>`;
+    }
+  } catch (e) {
+    $("reasoning-result").innerHTML = `<div style="color:var(--bad);font-size:13px;">Error: ${esc(e.message)}</div>`;
+  } finally {
+    $("reasoning-check").disabled = false;
+  }
+}
+
+async function translate() {
+  if (!current) return;
+  const key = current.key;
+  const lang = $("trans-lang").value;
+  if (!lang) return;
+  $("trans-btn").disabled = true;
+  $("trans-result").innerHTML = `<span class="hint">Translating…</span>`;
+  try {
+    const r = await api("/api/translate", { key, language: lang });
+    if (!current || current.key !== key) return;
+    if (r.found) {
+      $("trans-result").innerHTML = `<div class="trans-box">🌐 <b>${esc(lang.toUpperCase())}:</b> ${esc(r.text)}<br><small>${esc(r.id)} · level ${r.level}</small></div>`;
+    } else {
+      $("trans-result").innerHTML = `<span class="hint">No ${esc(lang)} version of this problem in the data. Prepare more languages with prepare_m3kang.py --languages.</span>`;
+    }
+  } catch (e) {
+    $("trans-result").innerHTML = `<span style="color:var(--bad);">Error: ${esc(e.message)}</span>`;
+  } finally {
+    $("trans-btn").disabled = false;
+  }
 }
 
 async function loadSimilar() {
@@ -345,13 +413,17 @@ async function loadSimilar() {
   if (!info.embed) { $("sim-hint").textContent = "The embedding server is down (port 8082)."; return; }
   const key = current.key;
   $("sim-hint").textContent = "Searching…";
-  const hits = await api(`/api/similar?key=${encodeURIComponent(key)}&k=3`);
-  if (current.key !== key) return;
-  $("sim-hint").textContent = "The training problems whose embeddings are closest to this one. A score near 1 means very similar. With RAG, the model sees the top ones as solved examples.";
-  $("similar").innerHTML = hits.map(h => `
-    <div class="sim"><b>${h.score}</b> · ${esc(h.id)} · level ${h.level} · answer <b>${esc(h.label)}</b>
-      ${h.image ? `<img loading="lazy" src="/image/${encodeURIComponent(h.key)}" alt="Similar problem ${esc(h.id)}">` : `<div class="text">${esc(h.text)}</div>`}
-    </div>`).join("");
+  try {
+    const hits = await api(`/api/similar?key=${encodeURIComponent(key)}&k=3`);
+    if (current.key !== key) return;
+    $("sim-hint").textContent = "The training problems whose embeddings are closest to this one. A score near 1 means very similar. With RAG, the model sees the top ones as solved examples.";
+    $("similar").innerHTML = hits.map(h => `
+      <div class="sim"><b>${h.score}</b> · ${esc(h.id)} · level ${h.level} · answer <b>${esc(h.label)}</b>
+        ${h.image ? `<img loading="lazy" src="/image/${encodeURIComponent(h.key)}" alt="Similar problem ${esc(h.id)}">` : `<div class="text">${esc(h.text)}</div>`}
+      </div>`).join("");
+  } catch (e) {
+    $("sim-hint").textContent = "Couldn't search: " + e.message;
+  }
 }
 
 function next(randomly) {
@@ -371,6 +443,8 @@ async function main() {
   $("rag").disabled = !info.index;
   info.languages.forEach(l => $("f-lang").insertAdjacentHTML("beforeend", `<option>${esc(l)}</option>`));
   info.levels.forEach(l => $("f-level").insertAdjacentHTML("beforeend", `<option>${l}</option>`));
+  // Translate only offers the languages that exist in the data.
+  $("trans-lang").innerHTML = info.languages.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join("");
   all = await api("/api/problems");
   renderList();
   if (shown.length) open(shown[0].key);
@@ -382,20 +456,22 @@ $("mine").addEventListener("click", e => { if (e.target.dataset.l) answer(e.targ
 $("ask").addEventListener("click", ask);
 $("get-hint").addEventListener("click", getHint);
 $("show-solution").addEventListener("click", showSolution);
-$("reset-hints").addEventListener("click", resetAllHints);
+$("reset-hints").addEventListener("click", resetHints);
+$("reasoning-check").addEventListener("click", checkReasoning);
+$("reasoning-input").addEventListener("keydown", e => { if (e.key === "Enter") checkReasoning(); });
+$("trans-btn").addEventListener("click", translate);
 $("next").addEventListener("click", () => next(false));
 $("random").addEventListener("click", () => next(true));
 document.addEventListener("keydown", e => {
-  if (e.target.tagName === "SELECT" || e.metaKey || e.ctrlKey || e.altKey) return;
+  // Don't steal keys while the student is typing.
+  if (e.target.matches("select, input[type=text], textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key.toUpperCase();
   if ("ABCDE".includes(k) && k.length === 1) answer(k);
   else if (k === "M") ask();
-  else if (k === "H") getHint();
-  else if (k === "S") showSolution();
   else if (k === "N") next(false);
   else if (k === "R") next(true);
 });
-main();
+main().catch(e => { $("meta").textContent = "Error: " + e.message; });
 </script>
 </body>
 </html>
