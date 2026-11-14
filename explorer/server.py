@@ -22,6 +22,7 @@ from copilot.config import CONFIG, ROOT  # noqa: E402
 from copilot.llm import build_messages  # noqa: E402
 from copilot.pipeline import solve  # noqa: E402
 from copilot.rag import Index  # noqa: E402
+from copilot.tutor import tutor_generate  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LLM = f"http://127.0.0.1:{CONFIG['LLM_PORT']}"
@@ -87,6 +88,8 @@ class App:
         self.by_key = {key_of(p): p for p in self.problems}
         self.index = Index(args.index) if os.path.exists(args.index) else None
         self.input = args.input
+        # Teaching: hint state per problem key (current hint level + history)
+        self.hint_state = {}
         # Images the page may ask for: the problems, and the solved problems in the index
         self.image_keys = set(self.by_key)
         if self.index:
@@ -144,6 +147,37 @@ class App:
         hits = self.index.search(problem, k=k, exclude_id=problem["id"])
         return [{"score": round(s, 3), **public(p, self.images), "label": p["label"]} for s, p in hits]
 
+    # ── Teaching: hint ladder ──────────────────────────────────────────────
+
+    def _hint_state(self, key):
+        """Return (level, history) for a problem key, creating if needed."""
+        if key not in self.hint_state:
+            self.hint_state[key] = {"level": 1, "history": []}
+        return self.hint_state[key]
+
+    def get_hint(self, key):
+        """Generate the next hint rung for this problem."""
+        state = self._hint_state(key)
+        problem = self.by_key[key]
+        result = tutor_generate(problem, index=self.index, hint_level=state["level"], timeout=55)
+        state["history"].append(result)
+        state["level"] = min(state["level"] + 1, 4)  # cap at solution
+        return result
+
+    def get_solution(self, key):
+        """Force the solution (level 4)."""
+        problem = self.by_key[key]
+        result = tutor_generate(problem, index=self.index, hint_level=4, timeout=55)
+        result["is_final"] = True
+        state = self._hint_state(key)
+        state["history"].append(result)
+        return result
+
+    def clear_hint(self, key):
+        """Reset the hint state so the student starts fresh."""
+        if key in self.hint_state:
+            del self.hint_state[key]
+
 
 def make_handler(app):
     class Handler(BaseHTTPRequestHandler):
@@ -192,6 +226,13 @@ def make_handler(app):
                     return self.send(200, app.check(key, body["choice"]))
                 if self.path == "/api/ask":
                     return self.send(200, app.ask(key, int(body.get("rag", 0)), bool(body.get("vision"))))
+                if self.path == "/api/hint":
+                    return self.send(200, app.get_hint(key))
+                if self.path == "/api/solution":
+                    return self.send(200, app.get_solution(key))
+                if self.path == "/api/hint-reset":
+                    app.clear_hint(key)
+                    return self.send(200, {"ok": True})
             except (OSError, urllib.error.URLError) as error:
                 return self.send(502, {"error": f"model server: {error}"})
             return self.send(400, {"error": "bad request"})
