@@ -8,7 +8,7 @@ import time
 import urllib.error
 
 from .config import CONFIG
-from .llm import URL, answer_letter
+from .llm import REASONING, URL, answer_letter, answer_reasoning
 
 TIME_LIMIT = float(CONFIG["TIME_LIMIT_SECONDS"])
 FALLBACK = CONFIG["FALLBACK_ANSWER"]
@@ -33,10 +33,15 @@ def solve(problem, index=None, k=0, exclude_id=None, image_b64=None, llm_url=URL
             result["examples"] = hits
             result["retrieved"] = ";".join(f"{p['id']}:{s:.2f}" for s, p in hits)
         remaining = time_limit - (time.perf_counter() - start) - MARGIN
-        letter, timings = answer_letter(problem, examples, timeout=max(remaining, 1.0),
-                                        image_b64=image_b64, url=llm_url)
-        result["answer"] = letter
-        result["prompt_tokens"] = timings.get("prompt_n", 0)
+        if REASONING and not image_b64:
+            letter, info = answer_reasoning(problem, examples, timeout=max(remaining, 1.0),
+                                            time_limit=time_limit - MARGIN, url=llm_url)
+            result.update(reason=info)
+        else:
+            letter, info = answer_letter(problem, examples, timeout=max(remaining, 1.0),
+                                         image_b64=image_b64, url=llm_url)
+        result["answer"] = letter if letter in ("A", "B", "C", "D", "E") else FALLBACK
+        result["prompt_tokens"] = info.get("prompt_n", 0)
     except (socket.timeout, TimeoutError):
         result["status"] = "timeout"
     except urllib.error.URLError as error:
