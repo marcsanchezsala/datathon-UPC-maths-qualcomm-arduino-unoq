@@ -28,6 +28,7 @@ from copilot.tutor import (  # noqa: E402
     tutor_generate,
     tutor_student_correction,
     tutor_adaptive_next,
+    select_adaptive_problem,
     tutor_socratic_step,
     tutor_analyze_trap,
     find_rag_examples,
@@ -290,11 +291,15 @@ class App:
     def get_solution(self, key):
         """Force the solution (level 4)."""
         problem = self.by_key[key]
-        result = tutor_generate(problem, index=self.index, hint_level=4, timeout=40)
+        result = tutor_generate(problem, index=self.index, hint_level=4, timeout=35)
         state = self._get_or_create_state(key)
         state["history"].append(result)
         state["level"] = 4
         return result
+
+    def adaptive_spaced_next(self, current_level, history, language=None):
+        """Select next problem using spaced repetition weighted sampling."""
+        return select_adaptive_problem(self.problems, current_level, history, language=language)
 
     def student_reasoning(self, key, reasoning):
         """Student writes their thinking → correction + counterexamples."""
@@ -464,6 +469,21 @@ def make_handler(app):
                 )
             except (ValueError, UnicodeDecodeError):
                 return self.send(400, {"error": "invalid JSON"})
+
+            # Adaptive spaced practice does not require a single problem key upfront
+            if self.path == "/api/adaptive/next":
+                try:
+                    current_level = body.get("current_level", 0)
+                    history = body.get("history", {})
+                    language = body.get("language")
+                    res = app.adaptive_spaced_next(current_level, history, language=language)
+                    if res:
+                        return self.send(200, res)
+                    return self.send(404, {"error": "no problems found for adaptive practice"})
+                except Exception as error:
+                    traceback.print_exc()
+                    return self.send(500, {"error": f"{type(error).__name__}: {error}"})
+
             key = body.get("key")
             if key not in app.by_key:
                 return self.send(404, {"error": "unknown problem"})

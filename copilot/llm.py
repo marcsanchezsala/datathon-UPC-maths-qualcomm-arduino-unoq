@@ -50,3 +50,46 @@ def answer_letter(problem, examples=(), timeout=60, image_b64=None, url=URL):
     }, timeout=timeout)
     letter = response["choices"][0]["message"]["content"].strip()
     return letter, response.get("timings", {})
+
+
+def answer_micro_cot(problem, examples=(), timeout=35, image_b64=None, url=None, temperature=0, seed=None):
+    """Solve using Micro-CoT: 2-3 lines of math equations/logic concluding with \\boxed{LETTER}."""
+    timeout = min(timeout, 35)
+    target_url = url or CONFIG.get("ROUTER_MATH_URL") or URL
+    actual_seed = int(CONFIG["SEED"]) if seed is None else int(seed)
+    max_tokens = int(CONFIG.get("COT_MAX_TOKENS", 120))
+    messages = build_messages(problem, examples, image_b64)
+    suffix = "\nSolve in at most 3 short lines of equations and logic, then write \\boxed{X} where X is the correct option letter (A, B, C, D, or E)."
+    last_content = messages[-1]["content"]
+    if isinstance(last_content, str):
+        messages[-1]["content"] = last_content.removesuffix("\nAnswer:") + suffix
+    elif isinstance(last_content, list):
+        for part in reversed(last_content):
+            if isinstance(part, dict) and part.get("type") == "text":
+                part["text"] = part.get("text", "").removesuffix("\nAnswer:") + suffix
+                break
+        else:
+            last_content.append({"type": "text", "text": suffix})
+
+    payload = {
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "seed": actual_seed,
+        "cache_prompt": True,
+    }
+
+    try:
+        response = post(target_url, payload, timeout=timeout)
+    except Exception:
+        # Fallback to default LLM port (8081) if router or target URL fails
+        if target_url != URL:
+            response = post(URL, payload, timeout=timeout)
+        else:
+            raise
+
+    choices = response.get("choices") or []
+    text = choices[0]["message"]["content"].strip() if choices else ""
+    timings = dict(response.get("timings") or {})
+    return text, timings
+

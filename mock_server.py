@@ -167,11 +167,58 @@ class MockHandler(BaseHTTPRequestHandler):
         except ValueError:
             return self.send_json({"error": "invalid JSON"}, 400)
 
+        path = self.path
+        if path == "/api/adaptive/next":
+            current_level = body.get("current_level", 0)
+            history = body.get("history", {})
+            language = body.get("language")
+            mock_probs = [
+                {"key": key_of(pid, lang), "id": pid, "language": lang, "level": p["level"]}
+                for pid, p in PROBLEMS.items() for lang in LANGS
+            ]
+            import random
+            try:
+                lvl = int(current_level)
+            except (TypeError, ValueError):
+                lvl = 0
+            cands = [p for p in mock_probs if p["level"] == lvl]
+            if language:
+                lang_cands = [p for p in cands if p["language"] == language]
+                if lang_cands:
+                    cands = lang_cands
+            if not cands:
+                cands = mock_probs
+            weights = []
+            reasons = []
+            for p in cands:
+                h = history.get(p["key"]) or history.get(p["id"]) or {}
+                tries = int(h.get("tries", 0))
+                wrong = int(h.get("wrong", 0))
+                correct = int(h.get("correct", 0))
+                if tries == 0:
+                    w = 10.0
+                    r = "unseen"
+                elif wrong > 0:
+                    w = 15.0 + 10.0 * (wrong / max(tries, 1))
+                    r = "review_failed"
+                else:
+                    w = 1.0
+                    r = "mastered"
+                weights.append(w)
+                reasons.append(r)
+            idx = random.choices(range(len(cands)), weights=weights, k=1)[0]
+            chosen = cands[idx]
+            return self.send_json({
+                "key": chosen["key"],
+                "id": chosen["id"],
+                "level": chosen["level"],
+                "reason": reasons[idx],
+            })
+
         pid, lang = parse_key(body.get("key", ""))
         if not pid:
             return self.send_json({"error": "unknown problem"}, 404)
         p = PROBLEMS[pid]
-        path = self.path
 
         if path == "/api/check":
             choice = body.get("choice")
@@ -279,7 +326,26 @@ class MockHandler(BaseHTTPRequestHandler):
             return self.send_json({"type": "hint", "level": level, "text": text})
 
         if path == "/api/solution":
-            return self.send_json({"type": "solution", "level": 4, "text": p["solution"]})
+            micro_cot_solutions = {
+                "lvl-0_2015_14": (
+                    "Layer 1 and 3 (corners black): 5 black and 4 white each.\n"
+                    "Layer 2 (middle): opposite pattern with 4 black and 5 white.\n"
+                    "Total white cubes = 4 + 5 + 4 = 13.\n"
+                    "\\boxed{C}"
+                ),
+                "lvl-1_2016_20": (
+                    "Net daily gain: 3 m (day) - 2 m (night) = 1 m per full day.\n"
+                    "After 7 days and nights: snail reaches 7 m. On day 8: 7 + 3 = 10 m (top reached before night).\n"
+                    "\\boxed{B}"
+                ),
+                "lvl-2_2017_19": (
+                    "Rewrite factors into powers of 10: 2^{10} × 5^8 = 2^2 × (2 × 5)^8 = 4 × 10^8.\n"
+                    "4 × 10^8 = 400,000,000. Sum of digits = 4 + 0 = 4.\n"
+                    "\\boxed{A}"
+                ),
+            }
+            sol_text = micro_cot_solutions.get(pid, f"{p['solution']}\n\\boxed{{{p['label']}}}")
+            return self.send_json({"type": "solution", "level": 4, "text": sol_text})
 
         if path == "/api/reasoning":
             text = (body.get("reasoning") or "").strip()

@@ -15,9 +15,11 @@ Features:
 """
 import re
 import math
+import random
 from .client import post
 from .config import CONFIG
 from .rag import Index
+from .llm import answer_micro_cot
 
 TUTOR_URL = f"http://127.0.0.1:{CONFIG['LLM_PORT']}/v1/chat/completions"
 
@@ -163,10 +165,14 @@ def tutor_messages(problem, hint_level=3, student_reasoning=None):
 
     if hint_level == 4:
         system_content = (
-            "The student needs the full solution now. Explain reasoning step by step, "
-            "show the calculation or logic, and state the correct letter clearly."
+            "You solve multiple-choice math competition problems for school students. "
+            "Explain the reasoning step by step in 2-3 lines of equations and logic, "
+            "then state the final correct option in \\boxed{LETTER}."
         )
-        user_content = f"The student is ready for the solution.\n{problem_text}"
+        user_content = (
+            f"The student needs the full mathematical solution.\n{problem_text}\n"
+            f"Solve in 2-3 short lines of equations, then conclude with \\boxed{{LETTER}}."
+        )
     elif hint_level == 2:
         system_content = (
             "You are a concise math tutor. Provide a ONE-SENTENCE method hint. "
@@ -204,10 +210,10 @@ def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, ti
       1 = RAG example (similar problem, instant)
       2 = Method hint (LLM, fast, short)
       3 = Model hint (LLM, short)
-      4 = Full solution (LLM, max 180 tokens)
+      4 = Full solution (Micro-CoT 2-3 lines math logic + \boxed{LETTER})
       5 = Student reasoning correction (LLM, short)
     """
-    timeout = min(timeout, 40)
+    timeout = min(timeout, 35)
     # Level 1: RAG pure, no LLM call (instant, <0.5s)
     if hint_level == 1 and index:
         examples = find_rag_examples(problem, index, k=2)
@@ -224,9 +230,39 @@ def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, ti
                 "timings": {},
             }
 
+    # Level 4: Micro-CoT mathematical reasoning with router math url and fallback to TUTOR_URL
+    if hint_level == 4:
+        math_url = CONFIG.get("ROUTER_MATH_URL") or TUTOR_URL
+        try:
+            text, timings = answer_micro_cot(
+                problem,
+                examples=(),
+                timeout=timeout,
+                url=math_url,
+            )
+            if "\\boxed{" not in text and problem.get("label"):
+                text += f"\n\\boxed{{{problem['label']}}}"
+            return {
+                "text": text,
+                "type": "solution",
+                "level": 4,
+                "prompt_tokens": timings.get("prompt_n", 0),
+                "timings": timings,
+            }
+        except Exception as e:
+            fallback_label = problem.get("label", "")
+            ans_box = f"\\boxed{{{fallback_label}}}" if fallback_label else ""
+            return {
+                "text": f"Raonament pas a pas: avaluem les relacions del problema i deduïm la resposta correcta.\n{ans_box}",
+                "type": "solution",
+                "level": 4,
+                "status": "fallback",
+                "error": str(e),
+            }
+
     messages = tutor_messages(problem, hint_level, student_reasoning)
 
-    # Optimization: short responses for hints to avoid long waits (<60 tokens, solution <=180)
+    # Optimization: short responses for hints to avoid long waits (<60 tokens)
     if hint_level <= 3:
         payload = {
             "messages": messages,
@@ -235,18 +271,10 @@ def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, ti
             "seed": int(CONFIG["SEED"]),
             "cache_prompt": True,
         }
-    elif hint_level == 5:  # Reasoning correction
+    else:  # hint_level == 5 (Reasoning correction)
         payload = {
             "messages": messages,
             "max_tokens": 60,
-            "temperature": 0,
-            "seed": int(CONFIG["SEED"]),
-            "cache_prompt": True,
-        }
-    else:  # Level 4: solution (constrained to 180 tokens for edge latency)
-        payload = {
-            "messages": messages,
-            "max_tokens": 180,
             "temperature": 0,
             "seed": int(CONFIG["SEED"]),
             "cache_prompt": True,
@@ -360,6 +388,73 @@ def tutor_adaptive_next(current_problem, is_correct, index=None):
                 return {"id": p["id"], "level": p["level"], "text": p["text"]}
 
     return None
+
+
+def select_adaptive_problem(problems, current_level, history=None, language=None):
+    """Spaced repetition algorithm with weighted sampling for adaptive practice.
+
+    Weights:
+      - Unseen problems (tries == 0): W = 10.0 (high priority)
+      - Frequently failed (wrong > 0): W = 15.0 + 10.0 * (wrong / tries) (highest priority)
+      - Always correct / mastered (correct > 0, wrong == 0): W = 1.0 (low priority)
+
+    Returns:
+      {"key": str, "id": str, "level": int, "reason": "unseen"|"review_failed"|"mastered"}
+    """
+    history = history or {}
+    try:
+        current_level = int(current_level)
+    except (TypeError, ValueError):
+        current_level = 0
+
+    # Filter problems by current active level
+    level_probs = [p for p in problems if p.get("level") == current_level]
+    if language:
+        lang_probs = [p for p in level_probs if p.get("language") == language]
+        if lang_probs:
+            level_probs = lang_probs
+
+    if not level_probs:
+        level_probs = [p for p in problems if p.get("level") == current_level] or list(problems)
+
+    if not level_probs:
+        return None
+
+    candidates = []
+    weights = []
+    reasons = []
+
+    for p in level_probs:
+        pkey = p.get("key") or f"{p['id']}_{p.get('language', '')}"
+        pid = p.get("id")
+        h = history.get(pkey) or history.get(pid) or {}
+        tries = int(h.get("tries", 0))
+        wrong = int(h.get("wrong", 0))
+        correct = int(h.get("correct", 0))
+
+        if tries == 0:
+            w = 10.0
+            reason = "unseen"
+        elif wrong > 0:
+            w = 15.0 + 10.0 * (wrong / max(tries, 1))
+            reason = "review_failed"
+        else:
+            w = 1.0
+            reason = "mastered"
+
+        candidates.append((p, pkey))
+        weights.append(w)
+        reasons.append(reason)
+
+    idx = random.choices(range(len(candidates)), weights=weights, k=1)[0]
+    chosen_prob, chosen_key = candidates[idx]
+    return {
+        "key": chosen_key,
+        "id": chosen_prob["id"],
+        "level": chosen_prob.get("level", current_level),
+        "reason": reasons[idx],
+    }
+
 
 
 # ── Interactive Socratic Tutor & Trap Detector (Edge Optimized) ──────────
