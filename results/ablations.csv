@@ -36,3 +36,7 @@ time,name,commit,input,languages,n,rag_k,accuracy,mean_s,worst_s,over_limit
 20261115-024837,math15b_full_val,cb2d3cd,data/val.jsonl,all,562,0,28.3,0.5,6.7,0
 20261115-085448,hybrid,9f7d1ec,data/val.jsonl,all,10,0,30.0,1.4,2.5,0
 20261115-085839,qwen08b_aqua_val50,9f7d1ec,data/val.jsonl,all,50,0,24.0,0.6,4.5,0
+20261115-085924,qwen08b_aqua_val_all562,482f057,data/val.jsonl,all,562,0,22.6,0.7,10.2,0
+20261115-090852,hybrid,6847989,data/val.jsonl,all,3,0,66.7,0.3,0.5,0
+20261115-091027,math15b_val_all562,6847989,data/val.jsonl,all,562,0,25.1,0.6,5.3,0
+20261115-091834,math15b_demo_train,6847989,data/demo/train.jsonl,all,100,0,26.0,0.8,3.1,0
