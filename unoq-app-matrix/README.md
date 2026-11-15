@@ -35,17 +35,13 @@ unoq-app-matrix/
 
 ### Step 1: Push the app to the board
 ```bash
-# From your laptop, push the entire folder
-cd unoq-app-matrix
-find . -type f | while read f; do
-  echo "$f" | adb push "$f" "/tmp/$f"
-done
+# Opció A: via SCP (Wi-Fi / LAN)
 ssh arduino@192.168.1.85 "mkdir -p ~/ArduinoApps/math-matrix"
-adb shell "cat /tmp/unoq-app-matrix/app.yaml" | ssh arduino@192.168.1.85 "cat > /home/arduino/ArduinoApps/math-matrix/app.yaml"
-adb shell "cat /tmp/unoq-app-matrix/sketch/sketch.ino" | ssh arduino@192.168.1.85 "cat > /home/arduino/ArduinoApps/math-matrix/sketch/sketch.ino"
-adb shell "cat /tmp/unoq-app-matrix/sketch/sketch.yaml" | ssh arduino@192.168.1.85 "cat > /home/arduino/ArduinoApps/math-matrix/sketch/sketch.yaml"
-adb shell "cat /tmp/unoq-app-matrix/python/main.py" | ssh arduino@192.168.1.85 "cat > /home/arduino/ArduinoApps/math-matrix/python/main.py"
-adb shell "cat /tmp/unoq-app-matrix/assets/index.html" | ssh arduino@192.168.1.85 "cat > /home/arduino/ArduinoApps/math-matrix/assets/index.html"
+scp -r unoq-app-matrix/* arduino@192.168.1.85:~/ArduinoApps/math-matrix/
+
+# Opció B: via ADB (cable USB)
+adb shell "mkdir -p /home/arduino/ArduinoApps/math-matrix"
+adb push unoq-app-matrix/. /home/arduino/ArduinoApps/math-matrix/
 ```
 
 ### Step 2: Start the app
