@@ -5,15 +5,23 @@ Serves the teaching interface for the Math on the Edge datathon.
 Standard library only. Runs on the Arduino UNO Q.
 
     python3 explorer/server.py --input data/val.jsonl --index data/index.db --images data/images
+
+If the App Lab app unoq-app-matrix is running, the LED matrix follows the
+tutor: thinking animation while the model works, the hint rung as a bar, and
+the chosen letter then a tick or a cross. Without the app, nothing changes.
+Use --no-matrix to turn it off, or --matrix-url to point elsewhere.
 """
 import argparse
 import base64
 import json
 import os
+import queue
 import re
 import sys
+import threading
 import traceback
 import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
@@ -47,6 +55,49 @@ VISION_TIME_LIMIT = 300
 MAX_HINT_LEVEL = 3  # rungs 1-3 are hints; rung 4 (the solution) only via /api/solution
 
 
+class Matrix:
+    """Sends commands to the LED matrix app (unoq-app-matrix, port 7000).
+
+    One background thread sends them in order, so the page never waits for the
+    matrix, and a missing or stopped app is ignored silently.
+    """
+
+    def __init__(self, base_url=None):
+        self.base = base_url.rstrip("/") if base_url else None
+        self.jobs = queue.Queue(maxsize=32)
+        if self.base:
+            threading.Thread(target=self._run, daemon=True).start()
+
+    def send(self, path):
+        if not self.base:
+            return
+        try:
+            self.jobs.put_nowait(path)
+        except queue.Full:  # the app is down or slow: drop rather than pile up
+            pass
+
+    def _run(self):
+        while True:
+            path = self.jobs.get()
+            try:
+                urllib.request.urlopen(self.base + path, timeout=1).read()
+            except (OSError, ValueError):
+                pass
+
+    # What the tutor shows
+    def thinking(self, on=True):
+        self.send(f"/thinking/{1 if on else 0}")
+
+    def feedback(self, letter, correct):
+        self.send(f"/feedback/{letter}/{'true' if correct else 'false'}")
+
+    def hint(self, level):
+        self.send(f"/hint/{max(0, min(int(level), 4))}")
+
+    def clear(self):
+        self.send("/clear")
+
+
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--input", default="data/val.jsonl", help="problems to explore")
@@ -54,6 +105,9 @@ def parse_args():
     p.add_argument("--index", default="data/index.db", help="retrieval index from build_index.py")
     p.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 to open on network")
     p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--matrix-url", default=CONFIG.get("MATRIX_URL", "http://127.0.0.1:7000"),
+                   help="LED matrix app (unoq-app-matrix)")
+    p.add_argument("--no-matrix", action="store_true", help="don't send anything to the LED matrix")
     return p.parse_args()
 
 
@@ -105,6 +159,7 @@ class App:
         self.by_key = {key_of(p): p for p in self.problems}
         self.index = Index(args.index) if os.path.exists(args.index) else None
         self.input = args.input
+        self.matrix = Matrix(None if args.no_matrix else args.matrix_url)
         # Teaching state
         self.hint_state = {}  # key -> {level, history, reasoning, ...}
         self.student_profile = {}  # key -> {correct, wrong, level}
@@ -161,6 +216,7 @@ class App:
             state["score_correct"] = state.get("score_correct", 0) + 1
         else:
             state["score_wrong"] = state.get("score_wrong", 0) + 1
+        self.matrix.feedback(choice, correct)  # the chosen letter, then a tick or a cross
         return {"correct": correct, "label": label if (correct or reveal) else None}
 
     def reveal(self, key):
@@ -206,6 +262,7 @@ class App:
             res["cached"] = True
             return res
 
+        self.matrix.thinking(True)
         try:
             result = tutor_socratic_step(
                 problem, step=step, student_input=clean_input, index=self.index, timeout=60
@@ -218,6 +275,8 @@ class App:
                 "status": "fallback",
                 "error": str(e),
             }
+        finally:
+            self.matrix.thinking(False)
         self._cache_put(self.socratic_cache, cache_key, result)
         return result
 
@@ -231,6 +290,7 @@ class App:
             res["cached"] = True
             return res
 
+        self.matrix.thinking(True)
         try:
             result = tutor_analyze_trap(
                 problem, option_letter=option, index=self.index, timeout=60
@@ -243,6 +303,8 @@ class App:
                 "status": "fallback",
                 "error": str(e),
             }
+        finally:
+            self.matrix.thinking(False)
         self._cache_put(self.trap_cache, cache_key, result)
         return result
 
@@ -264,8 +326,13 @@ class App:
         cached = self.hint_cache.get((key, level))
         if cached:
             state["level"] = min(level + 1, MAX_HINT_LEVEL)
+            self.matrix.hint(level)
             return cached
-        result = tutor_generate(problem, index=self.index, hint_level=level, timeout=60)
+        self.matrix.thinking(True)
+        try:
+            result = tutor_generate(problem, index=self.index, hint_level=level, timeout=60)
+        finally:
+            self.matrix.hint(level)  # replaces the thinking animation: rung `level` of 4
         if self._leaks(problem, result.get("text", "")):
             result = {
                 "type": "hint", "level": level, "withheld": True,
@@ -292,7 +359,11 @@ class App:
     def get_solution(self, key):
         """Force the solution (level 4)."""
         problem = self.by_key[key]
-        result = tutor_generate(problem, index=self.index, hint_level=4, timeout=60)
+        self.matrix.thinking(True)
+        try:
+            result = tutor_generate(problem, index=self.index, hint_level=4, timeout=60)
+        finally:
+            self.matrix.hint(4)  # the whole bar: the last rung
         state = self._get_or_create_state(key)
         state["history"].append(result)
         state["level"] = 4
@@ -308,7 +379,11 @@ class App:
         state = self._get_or_create_state(key)
         state["reasoning"] = reasoning
 
-        result = tutor_student_correction(problem, reasoning, index=self.index, timeout=60)
+        self.matrix.thinking(True)
+        try:
+            result = tutor_student_correction(problem, reasoning, index=self.index, timeout=60)
+        finally:
+            self.matrix.thinking(False)
         state["history"].append(result)
         return result
 
@@ -380,20 +455,28 @@ class App:
         """Reset the hint state for a problem."""
         if key in self.hint_state:
             del self.hint_state[key]
+        self.matrix.hint(0)
 
     def ask(self, key, rag, vision):
         """Standard model ask (same as before)."""
         problem = self.by_key[key]
         image = self.image_b64(key) if vision else None
-        result = solve(
-            problem,
-            index=self.index if rag else None,
-            k=rag,
-            exclude_id=problem["id"],
-            image_b64=image,
-            llm_url=(VISION if vision else LLM) + "/v1/chat/completions",
-            time_limit=VISION_TIME_LIMIT if vision else float(CONFIG["TIME_LIMIT_SECONDS"]),
-        )
+        self.matrix.thinking(True)
+        try:
+            result = solve(
+                problem,
+                index=self.index if rag else None,
+                k=rag,
+                exclude_id=problem["id"],
+                image_b64=image,
+                llm_url=(VISION if vision else LLM) + "/v1/chat/completions",
+                time_limit=VISION_TIME_LIMIT if vision else float(CONFIG["TIME_LIMIT_SECONDS"]),
+            )
+        except Exception:
+            self.matrix.thinking(False)
+            raise
+        # The model's letter, then a tick or a cross
+        self.matrix.feedback(result["answer"], result["answer"] == problem["label"])
         examples = [p for _score, p in result["examples"]]
         return {
             "answer": result["answer"],
@@ -582,6 +665,16 @@ def main():
         f"embeddings {'up' if info['embed'] else 'DOWN'}, "
         f"vision {'up' if info['vision'] else 'off'}"
     )
+    if args.no_matrix:
+        print("LED matrix: off (--no-matrix)")
+    else:
+        try:
+            urllib.request.urlopen(args.matrix_url.rstrip("/") + "/status", timeout=1).read()
+            print(f"LED matrix: connected ({args.matrix_url})")
+        except (OSError, ValueError):
+            print(f"LED matrix: not found at {args.matrix_url}; start it with "
+                  f"arduino-app-cli app start user:unoq-app-matrix (the tutor works without it)")
+        app.matrix.hint(0)
     print(f"Open http://{args.host}:{args.port} (Ctrl+C to stop)", flush=True)
     ThreadingHTTPServer((args.host, args.port), make_handler(app)).serve_forever()
 
