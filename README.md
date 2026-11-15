@@ -3,259 +3,7 @@
 
 <img width="1526" height="927" alt="UPC-datathon" src="https://github.com/user-attachments/assets/daa7be34-b91a-4703-9581-7b5142f75d91" />
 
-## Math on the Edge: Build a Math Copilot with Arduino and M3Kang
-
-### The challenge
-
-Mathematical proficiency in Catalonia is declining in international assessments such as PISA. Teachers are stretched, and many students feel left behind by one-size-fits-all classrooms. AI can help, but only if it guides reasoning instead of doing the homework, and only if student data stays private.
-
-[M3Kang](https://huggingface.co/datasets/qualcomm/M3Kang) is a multilingual dataset of thousands of problems from the [Kangaroo Math Competition](https://mathkangaroo.org/mks/), across many languages and difficulty levels. It is a perfect raw material for a learning companion: a bank of problems to practise with, a library of examples to retrieve from, a map of mathematical topics and a benchmark to measure against.
-
-The Arduino UNO Q (4 GB) has two brains on one board: a Linux on a quad-core Arm CPU, the Qualcomm QRB2210, which can run small language models, embedding models and retrieval offline. And a real-time microcontroller that drives LEDs, buttons, motion sensors and cameras. Nothing leaves the device.
-
-The challenge of the Datathon FME 2026 is:
-
-> Design and build a Math copilot that runs entirely on the Arduino UNO Q and uses M3Kang in an innovative way to help students learn to reason mathematically.
-
-Your copilot must do both of these two things:
-
-* **Teach**: It must turn that ability into an experience that sparks curiosity and guides the student without giving away the answer, for example through hints, adaptive practice, error analysis, physical interaction or collaboration.
-* **Reason**: When given a Kangaroo-style problem, it must be able to choose the correct answer. Organizers will measure this objectively on a hidden test set.
-
-How you use M3Kang is up to you. It can be a retrieval knowledge base, a training set, a source of problem embeddings, a difficulty map, a multilingual bridge, or something nobody has thought of yet. The most original uses will score highest.
-
-Take into account that the [Arduino UNO Q board](https://store.arduino.cc/pages/uno-q) is slow for this type of work, but it's capable. It only reads about 11 tokens per second and writes about 5 tokens per second. Every word you put into a prompt costs time. Retrieval and embeddings cost a fraction of a second, but generation costs tens of seconds. Great solutions measure these trade-offs and design around them.
-
-#### Deliverables
-
-* The project and source code documented in an open Github repository and at the [Arduino Project Hub](https://projecthub.arduino.cc/) with the architecture, experiences, how to replicate the project, error analysis by topic, language and difficulty
-* A live demo and a 3-minute pitch on the board
- 
-#### References:
-* [Generative AI at the Edge with the UNO Q and its RAG](https://mjrovai.github.io/genai-uno-q/content/rag/rag.html) at the Edge chapter (Marcelo Rovai)
-* [How to Run High-Performance LLMs Locally on the Arduino UNO Q](https://projecthub.arduino.cc/marc-edgeimpulse/running-local-llms-and-vlms-on-the-arduino-uno-q-with-yzma-74e288)
-* [qualcomm/M3Kang (dataset and paper)](https://huggingface.co/datasets/qualcomm/M3Kang)
-
----
-
-### The repository
-
-This repository sets up what every team must run on the Arduino UNO Q (4 GB) before the datathon starts: a small language model that answers M3Kang math problems offline, an embedding model for retrieval, and the scripts to measure and improve your copilot.
-
-Follow the steps in order. Each one ends with a check, so you know it worked before you move on.
-
-By the end, you'll have:
-
-- `llama.cpp` built on the board by hand, at a pinned commit
-- `Qwen3.5 0.8B` (the language model) and `bge-small-en-v1.5` (the embedding model) downloaded and verified
-- A `hello world` with each model, so you know what the servers do
-- Both models running as services that start when the board boots
-- `predict.py`, which answers a file of problems with one letter each, A to E
-- Your `M3Kang` training and validation sets, and the baseline accuracy you need to beat
-
-## What you need
-
-- An Arduino UNO Q with 4 GB of RAM, a USB-C cable, and a USB-C power supply (5 V, 3 A). You will need to update it.
-- [Arduino App Lab](https://bit.ly/arduino-applab) to download the latest Arduino UNO Q versions.
-- A laptop with Python 3.10 or later, Git, and [Arduino App Lab](https://www.arduino.cc/en/software/#app-lab-section) installed
-- A Wi-Fi network that the board and the laptop share, with Internet access
-
-## The steps at a glance
-
-| Step | Where | What | Time |
-| --- | --- | --- | --- |
-| [0. Connect to the board](#step-0-connect-to-the-board) | Laptop | First setup in App Lab, then SSH | 15 min |
-| [1. Check the board](#step-1-check-the-board) | Board | Memory, disk, clock, internet | 2 min |
-| [2. Install the build tools](#step-2-install-the-build-tools) | Board | `sudo apt-get install` | 5 min |
-| [3. Build llama.cpp](#step-3-build-llamacpp) | Board | `git fetch`, `cmake` | 30 min |
-| [4. Download the models](#step-4-download-the-models) | Board | `wget`, `sha256sum` | 5 min |
-| [5. Hello world: language model](#step-5-hello-world-with-the-language-model) | Board | `llama-server`, `curl` | 10 min |
-| [6. Hello world: embeddings](#step-6-hello-world-with-the-embedding-model) | Board | `llama-server --embedding` | 5 min |
-| [7. Run as services](#step-7-run-both-models-as-services) | Board | `systemctl` | 5 min |
-| [8. First test](#step-8-get-the-datathon-code-and-run-the-first-test) | Board | `git clone`, `predict.py` | 5 min |
-| [9. Prepare M3Kang](#step-9-prepare-m3kang-on-your-laptop) | Laptop | `prepare_m3kang.py` | 30 min |
-| [10. Copy the data](#step-10-copy-the-data-to-the-board) | Laptop | `scp` | 1 min |
-| [11. Measure the baseline](#step-11-measure-the-baseline) | Board | `eval.py` | 10 min |
-| [12. Try retrieval](#step-12-try-retrieval-rag) | Board | `build_index.py`, `--rag` | 15 min |
-| [Optional: explorer](#optional-explore-the-problems-in-your-browser) | Board, in a browser | `explorer/server.py` | 10 min |
-| [13. Brainstorm your idea](#step-13-brainstorm-your-idea) | Team | Pick one idea, and how you'll measure it | 1 h |
-| [14. Implement and present](#step-14-implement-the-idea-and-prepare-the-presentation) | Board | `eval.py`, App Lab | Most of the datathon |
-| [15. Publish](#step-15-publish-your-project) | Laptop | GitHub, Arduino Project Hub | 2 h |
-
-Steps 1 to 8 are the minimum every team must have working on the board. Each command is shown in full, with what it does and what you should see.
-
-Every code block holds only what you type: copy it and paste it into the terminal. Commands run on the board, unless the text says **On your laptop**. When there's output to check, it's in a separate block after **You should see**.
-
----
-
-## Step 0: Connect to the board
-
-The UNO Q runs Debian Linux on its Qualcomm QRB2210 processor. You'll work in a terminal on it, over SSH.
-
-### 0.1 First setup in App Lab
-
-1. Connect the board to your laptop with the USB-C cable.
-2. Open [Arduino App Lab](https://bit.ly/arduino-applab). It finds the board and starts the first setup.
-3. Give the board a name, set a password for the `arduino` user, and connect it to your Wi-Fi network. Use the password `opensource`.
-4. **Let App Lab install any updates it offers, and wait for the board to restart**. This may take some minutes.
-
-Write the password down. You will need it for SSH and for `sudo`.
-
-### 0.2 Find the board's IP address
-
-In App Lab, the board's details show its IP address. Or, from the board's terminal in App Lab, run:
-
-```bash
-hostname -I
-```
-
-The first address, such as `192.168.1.131` (e.g.), is the one you want.
-
-### 0.3 Connect over SSH
-
-On your laptop:
-
-```bash
-ssh arduino@192.168.1.131
-```
-
-Type `yes` the first time, then your password. You should see a prompt like `arduino@name-of-your-board:~$`.
-
-### 0.4 If SSH doesn't work, connect over USB with adb (fallback)
-
-The board also accepts `adb`, the Android Debug Bridge, over the USB-C cable. App Lab uses it, and you'll need it when Wi-Fi is off, for example during your demo. Install it with [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools), or `brew install --cask android-platform-tools` on macOS.
-
-On your laptop, list the boards connected over USB:
-
-```bash
-adb devices
-```
-
-You should see your board's serial number:
-
-```text
-List of devices attached
-2663959333      device
-```
-
-Then open a shell on the board:
-
-```bash
-adb shell
-```
-
-`adb shell` logs you in as `arduino`. If more than one board is connected, pick one with `adb -s <serial> shell`.
-
-### 0.5 Turning the board off
-
-Always shut down from the terminal before you unplug the board. Pulling the power can corrupt the files on it.
-
-```bash
-sudo poweroff
-```
-
----
-
-## Step 1: Check the board
-
-Before you install anything, check that the board has what the next steps need. These commands only read: they change nothing.
-
-### 1.1 Memory and disk
-
-```bash
-free -h
-```
-
-You should see:
-
-```text
-               total        used        free      shared  buff/cache   available
-Mem:           3.6Gi       480Mi       2.8Gi        38Mi       505Mi       3.1Gi
-Swap:          1.8Gi          0B       1.8Gi
-```
-
-```bash
-df -h ~
-```
-
-You need about 3.6 GB of memory in `total`. In the `df` output, you need at least 2 GB in `Avail`. llama.cpp takes about 350 MB once it's built, the models take 870 MB, and the packages take a few hundred MB more.
-
-### 1.2 The clock
-
-```bash
-timedatectl | grep synchronized
-```
-
-You should see:
-
-```text
-System clock synchronized: yes
-```
-
-If it says `no`, the board has no internet yet, and `apt` and HTTPS downloads will fail with certificate errors. Check the Wi-Fi in App Lab.
-
-### 1.3 Internet access
-
-```bash
-curl -sI https://huggingface.co | head -1
-```
-
-You should see:
-
-```text
-HTTP/2 200
-```
-
-You need internet for steps 2 to 4. After that, everything runs offline.
-
----
-
-## Step 2: Install the build tools
-
-### 2.1 Update the package list
-
-```bash
-sudo apt-get update
-```
-
-`sudo` asks for the password you set in App Lab.
-
-### 2.2 Install the packages
-
-```bash
-sudo apt-get install -y build-essential cmake git pkg-config libssl-dev curl wget ca-certificates python3 sqlite3 jq
-```
-
-| Package | Why you need it |
-| --- | --- |
-| `build-essential` | The C and C++ compilers (`gcc`, `g++`) and `make` |
-| `cmake` | Configures the llama.cpp build |
-| `git` | Downloads llama.cpp and this repository |
-| `pkg-config`, `libssl-dev` | Let llama.cpp download over HTTPS |
-| `curl`, `wget`, `ca-certificates` | Download files and talk to the model servers |
-| `python3`, `sqlite3` | Run the datathon code and store the retrieval index |
-| `jq` | Read the JSON answers from the servers |
-
-**If `apt` says a package "is not installable"** (we saw `cmake` failing on `librhash1`, and `libc6-dev` on `rpcsvc-proto`), the package list was downloaded incompletely. Delete it, download it again, and repeat 2.2:
-
-```bash
-sudo rm -rf /var/lib/apt/lists/*
-sudo apt-get clean
-sudo apt-get update
-sudo apt-get install -y build-essential cmake git pkg-config libssl-dev curl wget ca-certificates python3 sqlite3 jq
-```
-
-### 2.3 Check
-
-```bash
-gcc --version | head -1
-cmake --version | head -1
-python3 --version
-```
-
-You should see:
-
-<img width="1526" height="927" alt="UPC-datathon" src="https://github.com/user-attachments/assets/daa7be34-b91a-4703-9581-7b5142f75d91" />
+> The organizers' step-by-step guide to set up the board (steps 0 to 15) is in [`DATATHON_SETUP.md`](DATATHON_SETUP.md).
 
 ---
 
@@ -265,7 +13,9 @@ The **Math on the Edge** submission fulfills both competition tracks of the Data
 
 1. **Track 1 — Reason (Champion Competition Solver):**
    - Offline, autonomous mathematical problem solver for the international Kangaroo Math Competition ([M3Kang](https://huggingface.co/datasets/qualcomm/M3Kang)).
-   - Solves competition problems in **Catalan** and **English**, achieving **28.8% (162/562)** overall validation accuracy, **30.1% (102/339)** on OCR options problems, and **32.0%** in real-time execution on the physical board with **0 timeouts**.
+   - **What answers on the board:** `Qwen2.5-Math-1.5B-Instruct` alone (Q4_K_M, port 8081), the configuration in [`config.env`](config.env). Measured on a laptop with that configuration: **25.1% (141/562)** on our M3Kang validation set and **26.0% (26/100)** on the organizers' practice set of new problems. Random guessing gives 20%.
+   - **Best result off the board:** the dual-model router described below (Qwen2.5-3B-Instruct + Qwen2.5-Math-1.5B) reached **28.8% (162/562)** on validation on a laptop. We do not submit it: Qwen2.5-3B takes 55–60 s per problem on the board's CPU, at the edge of the 60 s limit.
+   - On the physical board we recorded **32.0%** with **0 timeouts**.
    - Answers are rendered in real time onto the board's embedded **8x13 LED matrix** via the Arduino Router Bridge.
    - Run via: `python3 predict.py --input data/val.jsonl --output results/predictions.csv`
 
@@ -280,8 +30,10 @@ The **Math on the Edge** submission fulfills both competition tracks of the Data
 
 ## 2. The Architecture
 
+> **Submitted configuration:** one language model on the board, `Qwen2.5-Math-1.5B-Instruct` on port 8081, for every language and level. In [`config.env`](config.env) the router's two addresses point to that same server. The two-model routing in the flowchart is the laptop configuration that scored 28.8%; see section 1 for why it is not the one on the board.
+
 The system coordinates the two asymmetric processing domains of the Arduino UNO Q:
-1. **Linux Domain (Qualcomm QRB2210 quad-core Arm Cortex-A53 @ 2.0 GHz, 4 GB LPDDR4):** Hosts concurrent quantized model servers through `llama.cpp` and executes the Python decision pipeline ([`copilot/pipeline.py`](file:///C:/Users/marcs/Documents/GitHub/datathon-UPC-maths-qualcomm-arduino-unoq/copilot/pipeline.py)).
+1. **Linux Domain (Qualcomm QRB2210 quad-core Arm Cortex-A53 @ 2.0 GHz, 4 GB LPDDR4):** Hosts concurrent quantized model servers through `llama.cpp` and executes the Python decision pipeline ([`copilot/pipeline.py`](copilot/pipeline.py)).
 2. **Microcontroller Domain (Real-Time STM32 MCU):** Controls physical interaction, driving the onboard 8x13 LED matrix to visualize solutions (`A`–`E`) via remote procedure calls over the Arduino Router Bridge (`Bridge.call("draw", ...)`).
 
 ### Decision & Inference Pipeline Flowchart
@@ -323,7 +75,7 @@ flowchart TD
 ### Key Architectural Pillars
 
 1. **Tier 0 Near-Duplicate RAG (`score >= 0.94`):**
-   In competition sets, 39.7% of problems suffer from OCR parsing gaps where answer choices were not extracted from printed sheets. Instead of blindly guessing, Tier 0 searches a localized vector database ([`bge-small-en-v1.5`](file:///C:/Users/marcs/Documents/GitHub/datathon-UPC-maths-qualcomm-arduino-unoq/models/bge-small-en-v1.5-q8_0.gguf) on Port 8082). When a near-identical problem statement is found with cosine similarity $\ge 0.94$, the verified historical label is returned with **100% deterministic accuracy**, yielding a $+2$ net score gain over the static fallback `"D"`.
+   In competition sets, 39.7% of problems suffer from OCR parsing gaps where answer choices were not extracted from printed sheets. Instead of blindly guessing, Tier 0 searches a localized vector database (`bge-small-en-v1.5` on Port 8082). When a near-identical problem statement is found with cosine similarity $\ge 0.94$, the verified historical label is returned with **100% deterministic accuracy**, yielding a $+2$ net score gain over the static fallback `"D"`.
 2. **Zero-Overhead Hierarchical Language + Level Router:**
    A metadata-driven $O(1)$ router splits requests to the model best suited for the specific task:
    - **Catalan (`cat`, all levels):** Routed to **`Qwen2.5-3B-Instruct`** (Port 8081). The 3B model possesses broad multilingual pre-training that avoids the severe linguistic collapse observed in English-only mathematical models (27.8% vs 22.8%).
@@ -341,11 +93,11 @@ flowchart TD
 Replicating our champion system requires an **Arduino UNO Q 4 GB** (or a local Linux/Windows host for verification).
 
 ### Step 1: Base Environment Setup
-Ensure steps 0 through 12 from [`DATATHON_SETUP.md`](file:///C:/Users/marcs/Documents/GitHub/datathon-UPC-maths-qualcomm-arduino-unoq/DATATHON_SETUP.md) have been completed (cloning repo, Python 3 virtual environment, dependencies).
+Ensure steps 0 through 12 from [`DATATHON_SETUP.md`](DATATHON_SETUP.md) have been completed (cloning repo, Python 3 virtual environment, dependencies).
 
 ```bash
 # Clone the repository
-git clone https://github.com/marcs/datathon-UPC-maths-qualcomm-arduino-unoq.git
+git clone https://github.com/marcsanchezsala/datathon-UPC-maths-qualcomm-arduino-unoq.git
 cd datathon-UPC-maths-qualcomm-arduino-unoq
 
 # Create and activate virtual environment
@@ -403,26 +155,29 @@ llama-server -m models/Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf --port 8083 -c 204
 ```
 
 ### Step 4: Verify `config.env` Configuration
-Verify that [`config.env`](file:///C:/Users/marcs/Documents/GitHub/datathon-UPC-maths-qualcomm-arduino-unoq/config.env) contains the champion configuration:
+Verify that [`config.env`](config.env) contains the configuration we submit, the one that runs on the board:
 ```ini
+LLM_FILE=Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf
 LLM_PORT=8081
 EMBED_PORT=8082
-ROUTER_MATH_PORT=8083
-ROUTER_MATH_URL=http://127.0.0.1:8083/v1/chat/completions
+SOLVE_MODE=router
+ROUTER_MATH_PORT=8081
+ROUTER_MATH_URL=http://127.0.0.1:8081/v1/chat/completions
 ROUTER_ENG_MAX_LEVEL=5
 TIER0_RAG_MIN_SCORE=0.94
-SOLVE_MODE=router
 JEV_CONFIDENCE_THRESHOLD=0.38
-COT_MAX_TOKENS=220
+COT_MAX_TOKENS=80
 TIME_LIMIT_SECONDS=60
 FALLBACK_ANSWER=D
 DEBIAS_ALPHA=0.0
 ```
 
+Both router addresses are port 8081, so one model answers everything. For the dual-model router of setup B, set `ROUTER_MATH_PORT=8083`, `ROUTER_MATH_URL=http://127.0.0.1:8083/v1/chat/completions` and `COT_MAX_TOKENS=220`.
+
 ### Step 5: Build Vector Index & Execute Evaluation
 ```bash
-# Build the vector index for Tier 0 RAG
-python3 build_index.py --input data/sample_problems.jsonl --db data/index.db
+# Build the vector index for Tier 0 RAG from the training set (data/train.jsonl, from step 9 of DATATHON_SETUP.md)
+python3 build_index.py --input data/train.jsonl --db data/index.db
 
 # Run official evaluation on sample benchmark (50 problems)
 python3 eval.py --limit 50 --mode router
@@ -431,7 +186,9 @@ python3 eval.py --limit 50 --mode router
 python3 eval.py --limit 0 --mode router
 ```
 
-**Expected Console Output:**
+With the submitted single-model configuration we measured 141/562 = 25.1% on validation and 26/100 = 26.0% on the practice set (runs `math15b_val_all562` and `math15b_demo_train` in [`results/ablations.csv`](results/ablations.csv)).
+
+**Console output of the dual-model router (setup B, laptop):**
 ```text
 ============================================================
 Accuracy: 162/562 = 28.8%
@@ -464,7 +221,7 @@ Letters     A: 36/102  B:110/118  C:109/119  D:253/130  E: 54/93
 
 ## 4. Results
 
-The progression of all evaluated architectures is logged in [`results/ablations.csv`](file:///C:/Users/marcs/Documents/GitHub/datathon-UPC-maths-qualcomm-arduino-unoq/results/ablations.csv) and detailed in [`RESULTS.md`](file:///C:/Users/marcs/Documents/GitHub/datathon-UPC-maths-qualcomm-arduino-unoq/RESULTS.md).
+The progression of all evaluated architectures is logged in [`results/ablations.csv`](results/ablations.csv) and detailed in [`RESULTS.md`](RESULTS.md).
 
 ### Comprehensive Experimental Ablation Table
 
