@@ -6,7 +6,6 @@
 [![llama.cpp](https://img.shields.io/badge/Inference-llama.cpp%20pinned-FFA500.svg)](https://github.com/ggml-org/llama.cpp)
 [![Benchmark Accuracy](https://img.shields.io/badge/Full%20Val%20Accuracy-28.8%25%20(162%2F562)-brightgreen.svg)](#4-results)
 [![OCR Options Accuracy](https://img.shields.io/badge/With%20Options%20Accuracy-30.1%25%20(102%2F339)-blue.svg)](#4-results)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <img width="1526" height="927" alt="UPC-datathon" src="https://github.com/user-attachments/assets/daa7be34-b91a-4703-9581-7b5142f75d91" />
 
@@ -108,35 +107,50 @@ pip install -r laptop/requirements.txt
 ```
 
 ### Step 2: Download Pinned Models (GGUF)
-Our dual-model configuration fits comfortably within the 4 GB RAM of the UNO Q ($1.92\text{ GB} + 0.98\text{ GB} + 0.04\text{ GB} \approx 2.94\text{ GB}$ weights, leaving $\sim 1\text{ GB}$ for OS and context):
+Our setup utilizes the following pinned GGUF models:
 
 ```bash
 mkdir -p models
 
-# 1. Primary Multilingual Model: Qwen2.5-3B-Instruct (Port 8081)
-curl -L -o models/Qwen2.5-3B-Instruct-Q4_K_M.gguf \
-  https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf
-
-# 2. Mathematical Specialist: Qwen2.5-Math-1.5B-Instruct (Port 8083)
+# 1. Official Board Solver Champion: Qwen2.5-Math-1.5B-Instruct (Port 8081 on board / Port 8083 in dual router)
 curl -L -o models/Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf \
   https://huggingface.co/bartowski/Qwen2.5-Math-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf
 
-# 3. Embedding Model: bge-small-en-v1.5 (Port 8082)
+# 2. Teaching Copilot & Socratic Edge Model: Qwen3.5-0.8B-aqua-reason (Port 8081 in teaching track, trained via finetune/)
+# Note: Stored locally in models/ or trained on AQuA-RAT using finetune/train.py
+
+# 3. High-Capacity Multilingual Model: Qwen2.5-3B-Instruct (Port 8081 in dual router)
+curl -L -o models/Qwen2.5-3B-Instruct-Q4_K_M.gguf \
+  https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf
+
+# 4. Common Embedding Model: bge-small-en-v1.5 (Port 8082)
 curl -L -o models/bge-small-en-v1.5-q8_0.gguf \
   https://huggingface.co/CompendiumLabs/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5-q8_0.gguf
 ```
 
 ### Step 3: Launch Local Model Servers
-Start the local `llama-server` instances across the designated ports:
 
+#### A. Official Production Setup on the Physical Arduino UNO Q (Single LLM Service)
+On the physical Qualcomm QRB2210 ARM Cortex-A53 CPU, `Qwen2.5-Math-1.5B` provides the optimal balance of speed and precision (15–25s latency, 0 timeouts). It runs via `systemd` on Port 8081:
 ```bash
-# Terminal 1: Port 8081 (Qwen2.5-3B-Instruct)
+# Terminal 1: Port 8081 (Official Board Solver: Qwen2.5-Math-1.5B)
+llama-server -m models/Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf --port 8081 -c 2048 -t 4 --alias qwen2.5-math-1.5b
+
+# Terminal 2: Port 8082 (Embedding server: bge-small-en-v1.5)
+llama-server -m models/bge-small-en-v1.5-q8_0.gguf --port 8082 -c 512 -t 4 --embedding
+```
+*(For the Teaching Companion track, Port 8081 runs `Qwen3.5-0.8B-aqua-reason-Q8_0.gguf` with ultra-fast ~1–4s Socratic latency).*
+
+#### B. Dual-Model Hierarchical Router Setup (Evaluation / Laptop Server)
+To evaluate the complete dual-model router across all languages and levels:
+```bash
+# Terminal 1: Port 8081 (Qwen2.5-3B-Instruct for Catalan and English Levels 6-7)
 llama-server -m models/Qwen2.5-3B-Instruct-Q4_K_M.gguf --port 8081 -c 2048 -t 4 --alias qwen2.5-3b-instruct
 
-# Terminal 2: Port 8082 (Embedding server)
+# Terminal 2: Port 8082 (Embedding server: bge-small-en-v1.5)
 llama-server -m models/bge-small-en-v1.5-q8_0.gguf --port 8082 -c 512 -t 4 --embedding
 
-# Terminal 3: Port 8083 (Qwen2.5-Math-1.5B-Instruct)
+# Terminal 3: Port 8083 (Qwen2.5-Math-1.5B-Instruct for English Levels 0-5)
 llama-server -m models/Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf --port 8083 -c 2048 -t 4 --alias qwen2.5-math-1.5b
 ```
 

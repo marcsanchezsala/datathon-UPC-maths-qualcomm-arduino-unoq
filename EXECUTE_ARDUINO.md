@@ -56,8 +56,11 @@ python3 --version
 ## 3. Verificació dels Serveis d'Inferència (Ports 8081 i 8082)
 
 El sistema utilitza dos servidors d'inferència locals basats en `llama.cpp` orquestrats com a serveis `systemd`:
-- **Port 8081 (`math-llm`):** Servidor del Model de Llenguatge (`Qwen2.5-3B-Instruct` o `Qwen2.5-Math-1.5B`).
-- **Port 8082 (`math-embed`):** Servidor d'Incrustacions Vectorials (`bge-small-en-v1.5`, vectors de 384 dimensions).
+- **Port 8081 (`math-llm`):** Servidor del Model de Llenguatge principal.
+  - **Track 1 (Predicció Oficial):** **`Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf`** (986 MB, ~1.1 GB RAM ocupada). És el model oficial a la placa: assoleix **15–25 s de latència mitjana**, 28.3% / 25.4% de precisió i **0 timeouts** sobre els 60 s reglamentaris.
+  - **Track 2 (Teaching Copilot):** **`Qwen3.5-0.8B-aqua-reason-Q8_0.gguf`** (833 MB, LoRA AQuA-RAT a `finetune/`). Proporciona latència ultra-ràpida (**1.2s – 3.8s**) per a tutoria socràtica interactiva i explicació de per què cada opció és incorrecta.
+  - *Nota sobre Qwen2.5-3B-Instruct:* Present a la placa a `~/models/`, però mesurat directament a la CPU ARM Cortex-A53 assoleix 1.8 tok/s de prompt i 1.7 tok/s de generació (~55–60 s/problema), pel que es reserva per a avaluació server/router i no com a model únic de competició a la placa.
+- **Port 8082 (`math-embed`):** Servidor d'Incrustacions Vectorials (**`bge-small-en-v1.5-q8_0.gguf`**, vectors de 384 dimensions, ~80 MB RAM per a cerca semàntica i Tier 0 Duplicate RAG en 0.0 s).
 
 ### 3.1 Comprovar l'estat dels serveis amb systemd
 

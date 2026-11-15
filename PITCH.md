@@ -67,9 +67,11 @@ Aquesta guia proporciona l'estructura completa, el guió verbal exacte en catal�
 - **Pilar 1: Tier 0 Near-Duplicate RAG ($O(1)$ Determinista)**
   - Cerca d'alta semblança (`score >= 0.94`) a la base de dades local `data/index.db` (2.932 problemes).
   - Resolució instantània en **0.0 segons** i **100% de precisió** en problemes repetits sense opcions.
-- **Pilar 2: Hierarchical Language & Level Router**
-  - Desplegament dual-model: `Qwen2.5-3B-Instruct` (comprensió del català i lògica superior nivells 6–7) + `Qwen2.5-Math-1.5B` (càlcul numèric en anglès nivells 0–5).
-  - Encaminament instantani basat en metadades sense cap cost computacional addicional.
+- **Pilar 2: Models a l'Arduino & Hierarchical Router**
+  - **Model Oficial a la Placa:** `Qwen2.5-Math-1.5B` a Port 8081 (1.1 GB RAM, 15-25s latència, 0 timeouts).
+  - **Tutor Socràtic a l'Edge:** `Qwen3.5-0.8B-aqua-reason` (833 MB, LoRA AQuA-RAT) per a guiatge pas a pas en 1-4s.
+  - **Avaluació Hierarchical Router:** Encaminament dual (`Math-1.5B` per a anglès nivells 0-5 + `3B` per a català i nivells 6-7) per assolir el rècord del 28.8%.
+  - Mesura de hardware: el 3B sol a la CPU ARM Cortex-A53 triga ~55-60s/problema vorejant el timeout, pel que `Math-1.5B` és l'equilibri perfecte precisió/temps per a la placa física.
 - **Pilar 3: Descodificació Restringida per Gramàtica (`BOXED_GRAMMAR`)**
   - Forçat sintàctic: `root ::= "\\boxed{" [A-E] "}"` (només 5 tokens).
   - Escalada condicional a Micro-Chain-of-Thought (220 tokens) amb protecció contra truncaments.

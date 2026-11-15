@@ -154,8 +154,8 @@ def create_presentation():
             [
                 ("SoC Qualcomm QRB2210:", "4 nuclis Arm Cortex-A53 a 2.0 GHz dissenyats per a baix consum."),
                 ("Memòria Límite:", "4 GB de RAM LPDDR4 compartida entre el SO Linux Debian, els servidors d'inferència i els models."),
-                ("Velocitat d'Inferència:", "~11 tokens/s de lectura i ~5 tokens/s de generació."),
-                ("Risc d'OOM:", "Models >3B provoquen caiguda per manca de memòria (Out Of Memory)."),
+                ("Velocitat d'Inferència:", "CPU ARM: ~11 t/s (0.8B) vs ~4.5 t/s (Math-1.5B) i ~1.8 t/s (3B)."),
+                ("Risc d'OOM i Timeouts:", "Models >3B provoquen OOM; el 3B a la CPU ARM voreja els 60s per problema."),
             ]
         ),
         (
@@ -253,14 +253,14 @@ def create_presentation():
         ),
         (
             "PILAR 2",
-            "Hierarchical Router",
+            "Models a l'Arduino & Router",
             QUALCOMM_BLUE,
-            "Encaminador Idioma + Nivell",
+            "Optimització per Hardware",
             [
-                ("Decisió O(1) Instantània:", "Sense crides addicionals; tria el model òptim segons les metadades de l'enunciat."),
-                ("Ruta Català (Tots els nivells):", "Qwen2.5-3B-Instruct (Port 8081). Evita el col·lapse lingüístic dels models només anglesos (+5.0% de millora)."),
-                ("Ruta Anglès Nivells 0–5:", "Qwen2.5-Math-1.5B (Port 8083). Màxima precisió en càlcul numèric, fraccions i àlgebra."),
-                ("Ruta Anglès Nivells 6–7:", "Qwen2.5-3B-Instruct. Domini de lògica verbal complexa i enunciats abstractes.")
+                ("Model Oficial a la Placa:", "Qwen2.5-Math-1.5B (Port 8081). Màxima velocitat matemàtica a la CPU ARM: 15-25s de latència mitjana, 1.1 GB RAM i 0 timeouts."),
+                ("Tutor Socràtic a l'Edge:", "Qwen3.5-0.8B-aqua-reason (833 MB, LoRA AQuA-RAT). Resposta ultra-ràpida (1-4s) per a acompanyament pas a pas i anàlisi d'errors."),
+                ("Avaluació Hierarchical Router:", "Dual-Model (Math-1.5B en anglès nivells 0-5 + 3B en català i nivells 6-7) per assolir el rècord del 28.8%."),
+                ("Tier 0 Duplicate RAG:", "Cerca semàntica exacta (>=0.94) amb bge-small (Port 8082) en 0.0s."),
             ]
         ),
         (
@@ -406,10 +406,10 @@ def create_presentation():
 
     table_data = [
         ("Model / Arquitectura", "Global (562)", "Amb Opcions (339)", "Timeouts"),
-        ("Hierarchical Router (El nostre)", "28.8% (162)", "30.1% (102)", "0 (0.0%)"),
-        ("Language Router bàsic", "27.8% (156)", "28.9% (98)", "0 (0.0%)"),
-        ("Qwen2.5-3B-Instruct solo", "26.2% (147)", "26.3% (89)", "0 (0.0%)"),
-        ("Qwen2.5-Math-1.5B solo", "25.4% (143)", "25.1% (85)", "0 (0.0%)"),
+        ("Hierarchical Router (Rècord global)", "28.8% (162)", "30.1% (102)", "0 (0.0%)"),
+        ("Qwen2.5-Math-1.5B (Oficial Arduino)", "28.3% / 25.4%", "25.1% (85)", "0 (0.0%)"),
+        ("Qwen2.5-3B-Instruct (Solo)", "26.2% (147)", "26.3% (89)", "0 (0.0%)"),
+        ("Qwen3.5-0.8B-aqua-reason (Tutor Edge)", "22.6% (127)", "23.0% (78)", "0 (0.0%)"),
         ("Sòl Estadístic (sempre 'D')", "23.1% (130)", "14.3% (48)", "0 (0.0%)"),
     ]
 
@@ -448,10 +448,10 @@ def create_presentation():
     p_rt.font.color.rgb = ARDUINO_TEAL
 
     breakdowns = [
-        ("Anglès (281 problemes):", "29.9% (84/281) encerts gràcies a l'especialització de Math-1.5B."),
-        ("Català (281 problemes):", "27.8% (78/281) encerts gràcies a la capacitat de 3B (+5.0% vs Math-1.5B)."),
-        ("Pics de Rendiment:", "37.5% a Nivell 3 (1r ESO) i 34.9% a Nivell 5 (3r ESO)."),
-        ("Latència a la Placa:", "Mitjana de 14.7s a bord (amb 0.3s mediana en Tier 1), molt lluny dels 60s."),
+        ("Model Oficial Arduino:", "Qwen2.5-Math-1.5B a Port 8081 (15-25s mitjana, 0 timeouts sobre 60s)."),
+        ("Tutor Socràtic Edge:", "Qwen3.5-0.8B-aqua-reason a Port 8081 (fine-tuning LoRA, latència 1-4s)."),
+        ("Lliçó Clau de Hardware:", "3B a la CPU ARM fa 1.8 tok/s i voreja els 60s; Math-1.5B és l'equilibri perfecte precisió/temps."),
+        ("Matriu LED 8x13 (STM32):", "Senyalització visual en temps real de l'estat d'inferència de la placa."),
     ]
 
     for bold_b, norm_b in breakdowns:

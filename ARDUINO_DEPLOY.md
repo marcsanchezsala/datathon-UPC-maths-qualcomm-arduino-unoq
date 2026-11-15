@@ -75,9 +75,11 @@ adb push build_index.py /home/arduino/datathon-teaching/
 
 ## 3. Verificació dels Serveis d'Inferència Locals
 
-El Teaching Copilot requereix dos serveis `systemd` que allotgen els models en memòria mitjançant `llama-server`:
-1. `math-llm.service` (Port 8081): **Qwen3.5-0.8B-aqua-reason Q8_0** (model finetunejat amb AQuA per a raonament socràtic pas a pas, pistes i anàlisi de trampes).
-2. `math-embed.service` (Port 8082): **bge-small-en-v1.5 Q8_0** (generació d'embeddings per a la cerca semàntica RAG).
+La placa executa dos serveis `systemd` que allotgen els models en memòria mitjançant `llama-server`:
+1. `math-llm.service` (Port 8081):
+   - **Track de Predicció Oficial (`predict.py`):** **`Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf`** (986 MB, ~1.1 GB RAM). Model campió autònom a la placa: latència segura de 15–25s, 0 timeouts sobre el límit de 60s i alta precisió aritmètica.
+   - **Track de Teaching Copilot (`explorer/server.py`):** **`Qwen3.5-0.8B-aqua-reason-Q8_0.gguf`** (833 MB, LoRA AQuA-RAT generat a `finetune/`). Model ultraràpid (1–4s) per a guiatge socràtic pas a pas i explicació de per què cada opció és incorrecta.
+2. `math-embed.service` (Port 8082): **`bge-small-en-v1.5-q8_0.gguf`** (37 MB, generació d'embeddings per a la cerca semàntica i resolució determinista Tier 0 Near-Duplicate RAG en 0.0 s).
 
 Comprova l'estat dels serveis a la placa:
 

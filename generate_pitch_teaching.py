@@ -159,10 +159,11 @@ def build_presentation(output_path=None):
 
     add_card(s2, Inches(6.8), top_pos, col_w, col_h,
              "Stack d'Inferència Local (llama.cpp)",
-             ["math-llm.service (port 8081): Qwen3.5 0.8B Q8_0 per a raonament socràtic i Micro-CoT.",
+             ["math-llm.service (port 8081): Qwen3.5 0.8B Q8_0 fine-tunejat amb LoRA (AQuA-RAT) per a raonament socràtic.",
               "math-embed.service (port 8082): bge-small-en-v1.5 Q8_0 per a embeddings.",
-              "Local RAG Index: Base SQLite local (data/index.db) amb exemples d'entrenament.",
-              "Motor pedagògic natiu en Python gestionant sessions, domini i estat de l'alumne."])
+              "Local RAG Index: Base SQLite local (data/index.db) amb 2.932 exemples d'entrenament.",
+              "Track Predicció: Suport directe per a Qwen2.5-Math-1.5B com a model oficial de competició (predict.py).",
+              "Motor pedagògic natiu en Python gestionant sessions, domini i estat adaptatiu de l'alumne."])
 
     notes2 = (
         "NOTES ORADOR (30 segons):\n"
