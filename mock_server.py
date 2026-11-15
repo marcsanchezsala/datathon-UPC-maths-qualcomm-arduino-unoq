@@ -76,6 +76,24 @@ PROBLEMS = {
         ],
         "solution": "2^10 × 5^8 = 2^2 × 10^8 = 4 × 100000000 = 400000000. Its digits add up to 4.",
     },
+    "lvl-0_2015_9": {
+        "level": 0, "year": 2015, "label": "C",
+        "text": {
+            "eng": "Ricard and Tomàs are building an igloo. Every hour, Ricard makes 8 snow blocks, and Tomàs makes two blocks fewer. "
+                   "How many blocks can they make together in 3 hours?",
+            "cat": "En Ricard i en Tomàs construeixen un iglú. Cada hora, en Ricard fa 8 blocs de neu i en Tomàs fa dos blocs menys. "
+                   "Quants blocs poden fer treballant tots dos junts durant 3 hores?",
+            "esp": "Ricard y Tomàs construyen un iglú. Cada hora, Ricard hace 8 bloques de nieve y Tomàs hace dos bloques menos. "
+                   "¿Cuántos bloques pueden hacer juntos durante 3 horas?",
+        },
+        "options": {"A": "14", "B": "30", "C": "42", "D": "48", "E": "54"},
+        "hints": [
+            "📌 **Estratègia recomanada:** Aquest és un problema de taxes combinades: 1) Troba la taxa de cadascú en 1 hora, 2) Suma-les per saber quant fan junts per hora, 3) Multiplica pel nombre total d'hores.\n\n💡 **Exemple de referència:** Un obrer fa 5 maons per hora i un altre en fa 3. Quants maons fan junts en 2 hores?\n**Solució de l'exemple:** L'opció correcta és B) 16.",
+            "Troba primer quant fa en Tomàs per hora (8 - 2 = 6 blocs/h), i després suma les dues taxes.",
+            "Junts fan 8 + 6 = 14 blocs cada hora. Multiplica aquesta taxa per les 3 hores de feina.",
+        ],
+        "solution": "Ricard: 8 blocs/h. Tomàs: 8 - 2 = 6 blocs/h.\nTaxa combinada = 8 + 6 = 14 blocs/h.\nEn 3 hores: 14 × 3 = 42 blocs.",
+    },
 }
 
 LANGS = ["eng", "cat", "esp"]
@@ -250,6 +268,11 @@ class MockHandler(BaseHTTPRequestHandler):
                     2: "Pots agrupar potències de 2 i de 5 per formar potències de 10? Quants parells (2×5) pots fer?",
                     3: "Quin és el factor restant multiplicat per 10^8, i quina és la suma de les seves xifres?",
                 },
+                "lvl-0_2015_9": {
+                    1: "Quants blocs fa en Ricard en una hora i quants en fa en Tomàs (tenint en compte que en fa 2 menys)?",
+                    2: "Quina és la taxa de producció combinada de tots dos treballant junts en una sola hora?",
+                    3: "Com multipliques la taxa combinada d'1 hora pel total de 3 hores per obtenir la quantitat final?",
+                },
             }
             prob_steps = socratic_qa.get(pid, {})
             text = prob_steps.get(step, f"Pas {step}: Analitza les dades del problema i reflexiona sobre el mètode.")
@@ -291,6 +314,12 @@ class MockHandler(BaseHTTPRequestHandler):
                     "C": "Trampa de doble: has calculat 4 × 2 o confós la suma d'exponents.",
                     "D": "Trampa de base 10: has agafat la base 10 de (2×5) com a suma de dígits.",
                     "E": "Trampa de dígits: has sumat els exponents 10 + 8 = 18 o xifres intermèdies.",
+                },
+                "lvl-0_2015_9": {
+                    "A": "Trampa de temps: s'ha calculat la producció de només 1 hora (14 blocs) oblidant multiplicar per les 3 hores totals.",
+                    "B": "Trampa de càlcul: 30 no correspon a cap combinació correcta de les taxes en 3 hores.",
+                    "D": "Trampa d'assumpció errònia: s'ha assumit que tots dos feien 8 blocs/hora (8 + 8 = 16, i 16 × 3 = 48), oblidant que el segon en fa 2 menys.",
+                    "E": "Trampa de signe: s'ha sumat 2 en lloc de restar 2 a la producció del segon treballador.",
                 },
             }
             prob_traps = trap_explanations.get(pid, {})
@@ -342,6 +371,12 @@ class MockHandler(BaseHTTPRequestHandler):
                     "Rewrite factors into powers of 10: 2^{10} × 5^8 = 2^2 × (2 × 5)^8 = 4 × 10^8.\n"
                     "4 × 10^8 = 400,000,000. Sum of digits = 4 + 0 = 4.\n"
                     "\\boxed{A}"
+                ),
+                "lvl-0_2015_9": (
+                    "Ricard: 8 blocs/h. Tomàs: 8 - 2 = 6 blocs/h.\n"
+                    "Taxa combinada = 8 + 6 = 14 blocs/h.\n"
+                    "En 3 hores = 14 × 3 = 42 blocs.\n"
+                    "\\boxed{C}"
                 ),
             }
             sol_text = micro_cot_solutions.get(pid, f"{p['solution']}\n\\boxed{{{p['label']}}}")

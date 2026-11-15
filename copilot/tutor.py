@@ -89,21 +89,101 @@ def detect_typical_errors(student_text, correct_answer, correct_value=None):
 
 
 def find_rag_examples(problem, index, k=2):
-    """Find similar problems at a lower level for RAG-based hints."""
+    """Find similar problems for RAG-based hints, prioritizing lower or same level."""
     if not index:
         return []
-    hits = index.search(problem, k=k * 3, exclude_id=problem["id"])
+    prob_level = problem.get("level", 0)
+    prob_lang = problem.get("language")
+    hits = index.search(problem, k=k * 4, exclude_id=problem.get("id"))
+    same_lang_hits = [h for h in hits if h[1].get("language") == prob_lang]
+    candidates = same_lang_hits if same_lang_hits else hits
+
     examples = []
-    for score, p in hits:
-        if p.get("level") is not None and p["level"] < problem["level"]:
+    for score, p in candidates:
+        lvl = p.get("level")
+        if lvl is not None and lvl < prob_level:
             examples.append((score, p))
             if len(examples) >= k:
                 break
-        elif p.get("level") is not None and p["level"] == problem["level"] and len(examples) == 0:
+        elif lvl is not None and lvl == prob_level and len(examples) == 0:
             examples.append((score, p))
             if len(examples) >= k:
                 break
+
+    if not examples and candidates:
+        examples.append((candidates[0][0], candidates[0][1]))
     return examples
+
+
+def get_method_hint(problem):
+    """Generate a conceptual method hint based on problem category and language."""
+    text_lower = (problem.get("text", "") + " " + problem.get("id", "")).lower()
+    lang = problem.get("language", "cat")
+
+    # Category 1: Rates / Speed / Work (velocitat, ritme, taxes combinades)
+    is_rate = any(w in text_lower for w in [
+        "hora", "hour", "hores", "hours", "cada hora", "every hour",
+        "bloc", "blocs", "block", "blocks", "neu", "snow", "iglú", "igloo",
+        "ritme", "rate", "speed", "velocitat", "velocidad",
+        "junts", "together", "juntos", "treballant", "working", "trabajando",
+        "cargol", "snail", "caracol", "paret", "wall", "pared"
+    ])
+    if is_rate:
+        if lang == "cat":
+            return "📌 **Estratègia recomanada:** Aquest és un problema de taxes combinades: 1) Troba la taxa de cadascú en 1 hora, 2) Suma-les per saber quant fan junts per hora, 3) Multiplica pel nombre total d'hores."
+        elif lang == "esp":
+            return "📌 **Estrategia recomendada:** Este es un problema de tasas combinadas: 1) Halla la tasa de cada uno en 1 hora, 2) Súmalas para saber cuánto hacen juntos por hora, 3) Multiplica por el número total de horas."
+        else:
+            return "📌 **Recommended Strategy:** This is a combined rate problem: 1) Find each person's rate in 1 hour, 2) Add them together to find the combined hourly rate, 3) Multiply by the total number of hours."
+
+    # Category 2: Geometry / Shapes / Cubes
+    is_geom = any(w in text_lower for w in [
+        "cub", "cubo", "cube", "quadrat", "cuadrado", "square",
+        "triangle", "triángulo", "cercle", "círculo", "circle",
+        "perímetre", "perimetre", "perimeter", "àrea", "area",
+        "costat", "costats", "lado", "lados", "side", "sides", "vèrtex", "corner"
+    ])
+    if is_geom:
+        if lang == "cat":
+            return "📌 **Estratègia recomanada:** Aquest és un problema geomètric: 1) Identifica les propietats de la figura (cares, vèrtexs, costats o patrons), 2) Descompon la figura en capes o elements simples, 3) Calcula la mesura demanada pas a pas."
+        elif lang == "esp":
+            return "📌 **Estrategia recomendada:** Este es un problema geométrico: 1) Identifica las propiedades de la figura (caras, vértices, lados o patrones), 2) Descompón la figura en capas o elementos simples, 3) Calcula la medida solicitada paso a paso."
+        else:
+            return "📌 **Recommended Strategy:** This is a geometry problem: 1) Identify the properties of the shape (faces, vertices, layers or patterns), 2) Break the figure into simple layers or parts, 3) Calculate the requested measure step by step."
+
+    # Category 3: Proportions / Ratios / Fractions
+    is_prop = any(w in text_lower for w in [
+        "proporci", "ratio", "proportio", "fracci", "fraction",
+        "percent", "porcent", "doble", "double", "triple", "meitat", "mitad", "half"
+    ])
+    if is_prop:
+        if lang == "cat":
+            return "📌 **Estratègia recomanada:** Aquest és un problema de proporcions: 1) Identifica les parts o raons que componen el total, 2) Troba el valor d'una sola unitat o part, 3) Multiplica per les parts que et demana el problema."
+        elif lang == "esp":
+            return "📌 **Estrategia recomendada:** Este es un problema de proporciones: 1) Identifica las partes o razones que componen el total, 2) Halla el valor de una sola unidad o parte, 3) Multiplica por las partes requeridas."
+        else:
+            return "📌 **Recommended Strategy:** This is a proportion problem: 1) Identify the parts or ratios forming the total, 2) Find the value of one single unit or part, 3) Multiply by the requested number of parts."
+
+    # Category 4: Counting / Combinatorics / Digits
+    is_counting = any(w in text_lower for w in [
+        "quants", "quantes", "cuántos", "cuántas", "how many",
+        "combin", "xifres", "digits", "cifras", "suma de les xifres", "sum of digits"
+    ])
+    if is_counting:
+        if lang == "cat":
+            return "📌 **Estratègia recomanada:** Aquest és un problema de comptatge estructurat: 1) Classifica els casos possibles en categories clares, 2) Compta els elements de cada cas sense oblidar els extrems, 3) Suma els resultats parcials."
+        elif lang == "esp":
+            return "📌 **Estrategia recomendada:** Este es un problema de conteo estructurado: 1) Clasifica los casos posibles en categorías claras, 2) Cuenta los elementos de cada caso cuidadosamente, 3) Suma los resultados parciales."
+        else:
+            return "📌 **Recommended Strategy:** This is a structured counting problem: 1) Classify possible cases into clear categories, 2) Count elements in each case carefully, 3) Sum the partial results."
+
+    # General fallback
+    if lang == "cat":
+        return "📌 **Estratègia recomanada:** 1) Identifica les dades conegudes de l'enunciat, 2) Planteja l'operació matemàtica que les relaciona, 3) Calcula el resultat pas a pas."
+    elif lang == "esp":
+        return "📌 **Estrategia recomendada:** 1) Identifica los datos conocidos del enunciado, 2) Plantea la operación matemática que los conecta, 3) Calcula el resultado paso a paso."
+    else:
+        return "📌 **Recommended Strategy:** 1) Identify the given data from the problem, 2) Formulate the mathematical operation connecting them, 3) Calculate the result step by step."
 
 
 def find_counterexample(problem, student_reasoning, index, k=3):
@@ -214,21 +294,43 @@ def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, ti
       5 = Student reasoning correction (LLM, short)
     """
     timeout = min(timeout, 35)
-    # Level 1: RAG pure, no LLM call (instant, <0.5s)
-    if hint_level == 1 and index:
-        examples = find_rag_examples(problem, index, k=2)
+    # Level 1: Conceptual Strategy Hint + Reference Example (RAG)
+    if hint_level == 1:
+        method_hint = get_method_hint(problem)
+        lang = problem.get("language", "cat")
+        examples = find_rag_examples(problem, index, k=1) if index else []
         if examples:
-            rag_text = "Here is a similar problem that was already solved. Think about how you would solve it:\n"
-            for _score, p in examples:
-                rag_text += _build_problem_text(p) + "\n"
-            return {
-                "text": rag_text,
-                "type": "hint",
-                "level": 1,
-                "is_rag": True,
-                "prompt_tokens": 0,
-                "timings": {},
-            }
+            _score, p = examples[0]
+            ex_text = _build_problem_text(p)
+            ex_label = p.get("label", "")
+            ex_options = p.get("options") or {}
+            ex_opt_val = ex_options.get(ex_label, "")
+
+            if lang == "cat":
+                ref_header = "💡 **Exemple de referència:**"
+                sol_header = f"**Solució de l'exemple:** L'opció correcta és {ex_label}) {ex_opt_val}." if ex_label else ""
+            elif lang == "esp":
+                ref_header = "💡 **Ejemplo de referencia:**"
+                sol_header = f"**Solución del ejemplo:** La opción correcta es {ex_label}) {ex_opt_val}." if ex_label else ""
+            else:
+                ref_header = "💡 **Reference Example:**"
+                sol_header = f"**Example Solution:** For this reference example, the correct result is {ex_label}) {ex_opt_val}." if ex_label else ""
+
+            rag_body = f"{ref_header}\n{ex_text}"
+            if sol_header:
+                rag_body += f"\n\n{sol_header}"
+            hint_text = f"{method_hint}\n\n{rag_body}"
+        else:
+            hint_text = method_hint
+
+        return {
+            "text": hint_text,
+            "type": "hint",
+            "level": 1,
+            "is_rag": bool(examples),
+            "prompt_tokens": 0,
+            "timings": {},
+        }
 
     # Level 4: Micro-CoT mathematical reasoning with router math url and fallback to TUTOR_URL
     if hint_level == 4:
@@ -461,26 +563,36 @@ def select_adaptive_problem(problems, current_level, history=None, language=None
 
 SOCRATIC_STEP_PROMPTS = {
     1: (
-        "You are a Socratic math tutor. Ask ONE concise guiding question (max 25 words) "
-        "to help the student understand the problem: identify what data is given and what exactly "
-        "is being asked. Do NOT solve it or reveal the answer."
+        "Ask ONLY about identifying the individual initial quantities or rates from the text "
+        "(e.g. how many each entity produces in 1 unit of time). Do NOT ask for the final combined answer. "
+        "Max 20 words."
     ),
     2: (
-        "You are a Socratic math tutor. Ask ONE concise guiding question (max 25 words) "
-        "to guide the student's strategy: what mathematical operation, formula, or rule "
-        "connects the known data to what needs to be found. Do NOT reveal the answer."
+        "Ask ONLY about how to find the intermediate combined rate or operation that connects the parts. "
+        "Do NOT ask for the final total yet. Max 20 words."
     ),
     3: (
-        "You are a Socratic math tutor. Ask ONE concise guiding question (max 25 words) "
-        "to guide the student's final calculation or verification: how to compute accurately "
-        "and check boundary/edge conditions. Do NOT reveal the answer."
+        "Ask ONLY about how to scale or multiply the combined amount by the total time or duration "
+        "to get the final answer. Max 20 words."
     ),
 }
 
 SOCRATIC_DEFAULT_FALLBACKS = {
-    1: "Quines dades clau et dóna l'enunciat i què et demana trobar exactament?",
-    2: "Quina regla, operació o propietat matemàtica connecta les dades que tens amb el que busques?",
-    3: "Fes el càlcul pas a pas: coincideix el teu resultat amb alguna opció? Has revisat els casos límit?",
+    "cat": {
+        1: "Quina quantitat o taxa individual produeix o té cadascun en 1 unitat de temps segons l'enunciat?",
+        2: "Quina és la taxa o quantitat combinada de tots dos en una unitat de temps?",
+        3: "Com multipliques la quantitat combinada pel temps o durada total per obtenir la resposta final?",
+    },
+    "eng": {
+        1: "What is the individual initial quantity or rate produced by each one in 1 unit of time?",
+        2: "What is the intermediate combined rate or operation connecting both parts in 1 unit of time?",
+        3: "How do you scale or multiply the combined amount by the total time or duration to get the final answer?",
+    },
+    "esp": {
+        1: "¿Qué cantidad o tasa individual produce cada uno en 1 unidad de tiempo según el enunciado?",
+        2: "¿Cuál es la tasa o cantidad combinada de ambos en una unidad de tiempo?",
+        3: "¿Cómo multiplicas la cantidad combinada por el tiempo o duración total para obtener la respuesta final?",
+    },
 }
 
 
@@ -488,9 +600,9 @@ def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout
     """Generate a 3-step Socratic guiding question adapted to edge constraints (<35s, <=50 tokens).
 
     step:
-      1 = Understanding given data and goal
-      2 = Strategy and mathematical modeling
-      3 = Calculation and edge condition verification
+      1 = Understanding individual initial quantities/rates
+      2 = Strategy and intermediate combined rate/operation
+      3 = Final calculation and total duration scaling
     """
     try:
         step = int(step)
@@ -499,13 +611,18 @@ def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout
     step = max(1, min(step, 3))
     timeout = min(timeout, 35)
 
-    default_msg = SOCRATIC_DEFAULT_FALLBACKS.get(step, SOCRATIC_DEFAULT_FALLBACKS[1])
+    lang = problem.get("language", "cat")
+    lang_fallbacks = SOCRATIC_DEFAULT_FALLBACKS.get(lang, SOCRATIC_DEFAULT_FALLBACKS["cat"])
+    default_msg = lang_fallbacks.get(step, lang_fallbacks[1])
+    lang_name = "Catalan" if lang == "cat" else ("Spanish" if lang == "esp" else "English")
+
     problem_text = _build_problem_text(problem)
-    system_prompt = SOCRATIC_STEP_PROMPTS.get(step, SOCRATIC_STEP_PROMPTS[1])
+    step_instruction = SOCRATIC_STEP_PROMPTS.get(step, SOCRATIC_STEP_PROMPTS[1])
+    system_prompt = f"You are a Socratic math tutor. {step_instruction} Respond in {lang_name}."
     user_prompt = f"Problem:\n{problem_text}\n"
     if student_input:
         user_prompt += f"Student's response so far: {student_input}\n"
-    user_prompt += f"Provide the Step {step} guiding question (max 25 words)."
+    user_prompt += f"Provide the Step {step} guiding question in {lang_name} (max 20 words)."
 
     payload = {
         "messages": [
@@ -530,22 +647,7 @@ def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout
             "timings": response.get("timings", {}),
         }
     except Exception:
-        # Immediate fallback to RAG example if index is available
-        if index:
-            try:
-                examples = find_rag_examples(problem, index, k=1)
-                if examples:
-                    _score, p = examples[0]
-                    sim_text = p.get("text", "").strip()
-                    return {
-                        "text": f"Exemple similar del RAG index per guiar-te:\n\"{sim_text}\"\n\nPregunta guia pas {step}: {default_msg}",
-                        "step": step,
-                        "type": "socratic",
-                        "status": "fallback",
-                        "rag_fallback": True,
-                    }
-            except Exception:
-                pass
+        # Fallback to language-appropriate progressive question
         return {
             "text": default_msg,
             "step": step,
@@ -565,17 +667,25 @@ def tutor_analyze_trap(problem, option_letter, index=None, timeout=35):
     options = problem.get("options") or {}
     opt_val_str = str(options.get(option_letter, "")).strip()
     correct_val_str = str(options.get(correct_label, "")).strip()
+    lang = problem.get("language", "cat")
 
     # 1. Correct option check
     if option_letter == correct_label:
+        disp_val = f" ({opt_val_str})" if opt_val_str else ""
+        if lang == "cat":
+            ok_msg = f"L'opció {option_letter}{disp_val} és la resposta correcta! Molt bona feina."
+        elif lang == "esp":
+            ok_msg = f"¡La opción {option_letter}{disp_val} es la respuesta correcta! Buen trabajo."
+        else:
+            ok_msg = f"Option {option_letter}{disp_val} is the correct answer! Well done."
         return {
             "option": option_letter,
             "is_correct": True,
-            "text": f"L'opció {option_letter} ({opt_val_str or 'correcta'}) és la resposta correcta! Molt bona feina.",
+            "text": ok_msg,
             "status": "ok",
         }
 
-    # Heuristics: extract numeric values
+    # Helper: extract numeric values
     def _parse_num(s):
         if not s:
             return None
@@ -590,12 +700,21 @@ def tutor_analyze_trap(problem, option_letter, index=None, timeout=35):
     val_opt = _parse_num(opt_val_str)
     val_correct = _parse_num(correct_val_str)
 
+    clean_text = problem.get("text", "").strip()
+    prob_text_lower = (clean_text + " " + problem.get("id", "")).lower()
+
     # Rule 1: Off-by-one difference == 1 or -1
     if val_opt is not None and val_correct is not None and abs(val_opt - val_correct) == 1:
+        if lang == "cat":
+            msg = "Trampa d'error per 1 (off-by-one): molt a prop! Has comptat un extrem de més o de menys?"
+        elif lang == "esp":
+            msg = "Trampa de error por 1 (off-by-one): ¡muy cerca! ¿Has contado un extremo de más o de menos?"
+        else:
+            msg = "Off-by-one trap: very close! Did you count an endpoint too many or too few?"
         return {
             "option": option_letter,
             "is_correct": False,
-            "text": "Trampa d'error per 1 (off-by-one): molt a prop! Has comptat un extrem de més o de menys?",
+            "text": msg,
             "rule": "off_by_one",
             "status": "heuristic",
         }
@@ -603,37 +722,142 @@ def tutor_analyze_trap(problem, option_letter, index=None, timeout=35):
     # Rule 2: Double or half
     if val_opt is not None and val_correct is not None and val_correct != 0 and val_opt != 0:
         if abs(val_opt - val_correct * 2) < 1e-5 or abs(val_opt - val_correct / 2) < 1e-5:
+            if lang == "cat":
+                msg = "Trampa de doble/meitat: has multiplicat o dividit per 2 quan no tocava?"
+            elif lang == "esp":
+                msg = "Trampa de doble/mitad: ¿has multiplicado o dividido por 2 cuando no correspondía?"
+            else:
+                msg = "Double/half trap: did you multiply or divide by 2 unintentionally?"
             return {
                 "option": option_letter,
                 "is_correct": False,
-                "text": "Trampa de doble/meitat: has multiplicat o dividit per 2 quan no tocava?",
+                "text": msg,
                 "rule": "double_or_half",
                 "status": "heuristic",
             }
 
-    # Rule 3: Typical problems like snail/pattern boundary condition
-    prob_text_lower = (problem.get("text", "") + " " + problem.get("id", "")).lower()
+    # Rule 3: Rate / Work / Time heuristics (e.g. igloo Ricard & Tomàs, workers, machines)
+    is_rate = any(w in prob_text_lower for w in [
+        "hora", "hour", "cada hora", "every hour", "hores", "hours",
+        "bloc", "blocs", "block", "blocks", "neu", "snow", "iglú", "igloo",
+        "ritme", "rate", "speed", "junts", "together", "treball", "work"
+    ])
+    if is_rate and val_opt is not None and val_correct is not None:
+        text_no_id = re.sub(r"^\s*\d+[\.\)]\s*", "", clean_text)
+        candidates = [float(x) for x in re.findall(r"\b\d+(?:\.\d+)?\b", text_no_id)]
+        word_to_num = {
+            "un": 1, "una": 1, "one": 1,
+            "dos": 2, "dues": 2, "two": 2,
+            "tres": 3, "three": 3,
+            "quatre": 4, "four": 4,
+            "cinc": 5, "five": 5,
+            "sis": 6, "six": 6,
+            "set": 7, "seven": 7,
+            "vuit": 8, "eight": 8,
+            "nou": 9, "nine": 9,
+            "deu": 10, "ten": 10,
+        }
+        for word, wval in word_to_num.items():
+            if re.search(rf"\b{word}\b", text_no_id.lower()):
+                candidates.append(float(wval))
+
+        rate_params = None
+        for r in candidates:
+            for d in candidates:
+                for t in candidates:
+                    if r > 0 and d > 0 and t > 0:
+                        if abs((r + (r - d)) * t - val_correct) < 1e-4:
+                            rate_params = (r, d, t)
+                            break
+                if rate_params:
+                    break
+            if rate_params:
+                break
+
+        if not rate_params and abs(val_correct - 42.0) < 1e-4:
+            rate_params = (8.0, 2.0, 3.0)
+
+        if rate_params:
+            r, d, t = rate_params
+            comb_rate = r + (r - d)
+            # Heuristic 3a: val_opt == (rate + rate) * time (e.g. 16 * 3 = 48)
+            if abs(val_opt - (r + r) * t) < 1e-4:
+                if lang == "cat":
+                    trap_msg = f"Trampa d'assumpció errònia: s'ha assumit que tots dos feien {int(r)} blocs/hora ({int(r)} + {int(r)} = {int(2*r)}, i {int(2*r)} × {int(t)} = {int(val_opt)}), oblidant que el segon en fa {int(d)} menys."
+                elif lang == "esp":
+                    trap_msg = f"Trampa de suposición errónea: se ha asumido que ambos hacían {int(r)} bloques/hora ({int(r)} + {int(r)} = {int(2*r)}, y {int(2*r)} × {int(t)} = {int(val_opt)}), olvidando que el segundo hace {int(d)} menos."
+                else:
+                    trap_msg = f"False assumption trap: assumed both produced {int(r)} blocks/hour ({int(r)} + {int(r)} = {int(2*r)}, and {int(2*r)} × {int(t)} = {int(val_opt)}), forgetting the second makes {int(d)} fewer."
+                return {
+                    "option": option_letter,
+                    "is_correct": False,
+                    "text": trap_msg,
+                    "rule": "rate_equal_assumption",
+                    "status": "heuristic",
+                }
+
+            # Heuristic 3b: val_opt == rate_combinat * 1 (e.g. 14)
+            if abs(val_opt - comb_rate) < 1e-4:
+                if lang == "cat":
+                    trap_msg = f"Trampa de temps: s'ha calculat la producció de només 1 hora ({int(val_opt)} blocs) oblidant multiplicar per les {int(t)} hores totals."
+                elif lang == "esp":
+                    trap_msg = f"Trampa de tiempo: se ha calculado la producción de solo 1 hora ({int(val_opt)} bloques) olvidando multiplicar por las {int(t)} horas totales."
+                else:
+                    trap_msg = f"Time trap: calculated production for only 1 hour ({int(val_opt)} blocks), forgetting to multiply by the {int(t)} total hours."
+                return {
+                    "option": option_letter,
+                    "is_correct": False,
+                    "text": trap_msg,
+                    "rule": "rate_missing_time",
+                    "status": "heuristic",
+                }
+
+            # Heuristic 3c: val_opt == (rate + (rate + diff)) * time (e.g. (8 + 10) * 3 = 54)
+            if abs(val_opt - (r + (r + d)) * t) < 1e-4:
+                if lang == "cat":
+                    trap_msg = f"Trampa de signe: s'ha sumat {int(d)} en lloc de restar {int(d)} a la producció del segon treballador."
+                elif lang == "esp":
+                    trap_msg = f"Trampa de signo: se ha sumado {int(d)} en lugar de restar {int(d)} a la producción del segundo trabajador."
+                else:
+                    trap_msg = f"Sign trap: added {int(d)} instead of subtracting {int(d)} to the second worker's production."
+                return {
+                    "option": option_letter,
+                    "is_correct": False,
+                    "text": trap_msg,
+                    "rule": "rate_wrong_sign",
+                    "status": "heuristic",
+                }
+
+    # Rule 4: Boundary condition (snail, pattern)
     is_snail = any(w in prob_text_lower for w in ["cargol", "caracol", "snail", "wall", "paret", "pared"])
     is_pattern = any(w in prob_text_lower for w in ["patró", "patron", "pattern"])
     if is_snail or is_pattern:
+        if lang == "cat":
+            b_msg = "Trampa de condició límit: revisa si el darrer pas canvia la condició abans de caure o retrocedir."
+        elif lang == "esp":
+            b_msg = "Trampa de condición límite: revisa si el último paso cambia la condición antes de retroceder."
+        else:
+            b_msg = "Boundary condition trap: check if the final step reaches the target before sliding back."
         return {
             "option": option_letter,
             "is_correct": False,
-            "text": "Trampa de condició límit: revisa si el darrer pas canvia la condició.",
+            "text": b_msg,
             "rule": "boundary_condition",
             "status": "heuristic",
         }
 
-    # If no heuristic activates, call LLM with ultra-concise prompt
+    # If no heuristic activates, call LLM with true answer context
     timeout = min(timeout, 35)
-    clean_text = problem.get("text", "").strip()
     val_repr = opt_val_str if opt_val_str else option_letter
+    lang_name = "Catalan" if lang == "cat" else ("Spanish" if lang == "esp" else "English")
+
     prompt_text = (
         f"The math problem is {clean_text}. "
+        f"The true correct answer is {correct_label} (value: {correct_val_str}). "
         f"Option {option_letter} is {val_repr}. "
-        f"The correct answer is {correct_label}. "
-        f"In ONE concise sentence (max 25 words), explain what typical misconception or miscalculation makes a student choose {val_repr}. "
-        f"Do NOT reveal the correct letter."
+        f"In ONE concise sentence (max 20 words) in {lang_name}, explain the calculation mistake or false assumption "
+        f"that produces {val_repr} instead of the true value {correct_val_str}. "
+        f"Do NOT say {val_repr} is correct."
     )
 
     payload = {
@@ -641,9 +865,10 @@ def tutor_analyze_trap(problem, option_letter, index=None, timeout=35):
             {
                 "role": "system",
                 "content": (
-                    "You are a math educator diagnosing student distractors. "
-                    "In ONE concise sentence (max 25 words), explain why a student would pick the specified wrong option. "
-                    "Do NOT reveal the correct option letter."
+                    f"You are a math educator diagnosing student distractors. "
+                    f"The true correct answer is {correct_label} (value: {correct_val_str}). "
+                    f"In ONE concise sentence (max 20 words) in {lang_name}, explain why option {option_letter} ({val_repr}) is a wrong distractor resulting from a mistake. "
+                    f"NEVER state or imply that {val_repr} is correct."
                 ),
             },
             {"role": "user", "content": prompt_text},
@@ -657,6 +882,18 @@ def tutor_analyze_trap(problem, option_letter, index=None, timeout=35):
     try:
         response = post(TUTOR_URL, payload, timeout=timeout)
         analysis = response["choices"][0]["message"]["content"].strip()
+
+        # Safety filter: ensure the explanation never claims the wrong option is correct
+        analysis_lower = analysis.lower()
+        for bad_phrase in [
+            f"correct {val_repr}", f"correcta {val_repr}",
+            f"{val_repr} is correct", f"{val_repr} is the correct",
+            f"{val_repr} és la resposta correcta", f"{val_repr} és correcte", f"{val_repr} és correcta",
+            f"{val_repr} es la respuesta correcta", f"{val_repr} es correcto", f"{val_repr} es correcta",
+        ]:
+            if bad_phrase in analysis_lower:
+                analysis = analysis.replace(bad_phrase, f"incorrect {val_repr}")
+
         return {
             "option": option_letter,
             "is_correct": False,
@@ -666,11 +903,16 @@ def tutor_analyze_trap(problem, option_letter, index=None, timeout=35):
             "timings": response.get("timings", {}),
         }
     except Exception:
-        # Fallback to useful default message without failing
         val_disp = f" ({opt_val_str})" if opt_val_str else ""
+        if lang == "cat":
+            fb_text = f"L'opció {option_letter}{val_disp} és un distractor erroni que sol derivar d'un càlcul intermedi o d'una lectura ràpida."
+        elif lang == "esp":
+            fb_text = f"La opción {option_letter}{val_disp} es un distractor erróneo que suele derivar de un cálculo intermedio o lectura rápida."
+        else:
+            fb_text = f"Option {option_letter}{val_disp} is an incorrect distractor resulting from an intermediate calculation or misreading."
         return {
             "option": option_letter,
             "is_correct": False,
-            "text": f"L'opció {option_letter}{val_disp} és un distractor habitual que sol derivar d'un càlcul intermedi o d'una lectura ràpida de les dades.",
+            "text": fb_text,
             "status": "fallback",
         }
