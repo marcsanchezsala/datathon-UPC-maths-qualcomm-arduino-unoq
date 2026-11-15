@@ -248,10 +248,27 @@ def read_line(ocr, gray, ink, y0, y1, x0, x1, base, cap):
     cleanly, the line and its prefix read differently, or a square root was
     lost.
     """
-    raised, prev = [], False
-    for a, b in ink_runs(ink[y0:y1, x0:x1].any(axis=0), 0):
+    def extent(a, b):
         rows = np.flatnonzero(ink[y0:y1, x0 + a:x0 + b].any(axis=1))
-        up = rows[-1] < base - 0.45 * cap and rows[0] < base - 0.75 * cap
+        return rows[0], rows[-1]
+
+    def on_base(a, b):  # a whole letter standing on the baseline
+        top, bottom = extent(a, b)
+        return bottom >= base - 0.2 * cap and bottom - top >= 0.6 * cap
+
+    raised, prev = [], False
+    runs = ink_runs(ink[y0:y1, x0:x1].any(axis=0), 0)
+    for k, (a, b) in enumerate(runs):
+        top, bottom = extent(a, b)
+        up = bottom < base - 0.45 * cap and top < base - 0.75 * cap
+        # An apostrophe ("L'Oriol") is raised too, but thin and close between
+        # two whole letters on the baseline. The thin strokes of an exponent
+        # (the "1" or the sides of the "0" in 10^10, a small "+") are not.
+        # Leave the apostrophe in the line.
+        if (up and 0 < k < len(runs) - 1 and b - a <= 0.25 * cap
+                and runs[k + 1][0] - b <= 0.3 * cap and a - runs[k - 1][1] <= 0.3 * cap
+                and on_base(*runs[k - 1]) and on_base(*runs[k + 1])):
+            up = False
         if up and prev:
             raised[-1][1] = b
         elif up:

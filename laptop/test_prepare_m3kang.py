@@ -99,6 +99,19 @@ no_bar = root.copy()
 no_bar[14:16] = False
 assert read_line(FakeOCR(["2"]), np.where(no_bar, 0, 255).astype(np.uint8), no_bar, 0, 50, 0, 60, base=39, cap=20) == "2"
 
+# Practice set lvl-0_2026_15_cat: the apostrophe of "L'Oriol" was taken for an
+# exponent, read badly, and the whole problem lost its options.
+name = np.zeros((50, 60), bool)
+name[20:40, 10:20] = True   # "L", on the baseline (row 39), capitals 20 rows tall
+name[20:28, 22:25] = True   # the apostrophe: thin, raised
+name[20:40, 27:40] = True   # "O", right after it
+name_gray = np.where(name, 0, 255).astype(np.uint8)
+assert read_line(FakeOCR(["L'O"]), name_gray, name, 0, 50, 0, 60, base=39, cap=20) == "L'O"
+prime = name.copy()
+prime[:, 27:40] = False     # nothing after it: a prime or exponent, still read on its own
+assert read_line(FakeOCR(["L", "'", "L"]), np.where(prime, 0, 255).astype(np.uint8), prime,
+                 0, 50, 0, 60, base=39, cap=20) == "L′"
+
 # Text clean-up.
 assert normalize("13cm2") == "13 cm²"
 assert normalize("2m2") == "2 m²"
