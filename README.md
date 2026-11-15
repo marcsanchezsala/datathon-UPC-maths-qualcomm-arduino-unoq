@@ -604,3 +604,7 @@ Developed with passion for the **Datathon FME 2026 — Qualcomm Challenge** (Fac
 ```
 
 Special thanks to **Qualcomm Technologies**, **Arduino**, and **UPC FME** for organizing the challenge and championing private, edge-native mathematical AI.
+
+## License
+
+Our code is released under the [MIT License](LICENSE). The license covers the code this team wrote. It does not cover the M3Kang data, which is licensed for research use only ([dataset card](https://huggingface.co/datasets/qualcomm/M3Kang)), or the models, each of which has its own license on its model card.
