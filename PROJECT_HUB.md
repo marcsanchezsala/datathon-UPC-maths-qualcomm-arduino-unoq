@@ -123,22 +123,21 @@ sudo cp bin/llama-server /usr/local/bin/
 ```
 
 ### Step 3: Download Quantized Models (GGUF)
-Both models fit together inside the 4 GB RAM:
-- `Qwen2.5-3B-Instruct` (Q4_K_M): $1.92\text{ GB}$
-- `Qwen2.5-Math-1.5B-Instruct` (Q4_K_M): $0.98\text{ GB}$
-- `bge-small-en-v1.5` (Q8_0): $0.04\text{ GB}$
-- **Total Weights:** $\sim 2.94\text{ GB}$, leaving over $1\text{ GB}$ free for Linux OS and KV caches.
+Our system supports two execution configurations:
+1. **Official Board Production Deployment (Single LLM Service):** `Qwen2.5-Math-1.5B-Instruct` ($0.98\text{ GB}$) on Port 8081 + `bge-small` on Port 8082. This runs within $1.1\text{ GB}$ RAM, providing 15–25s latency and 0 timeouts on the physical ARM CPU.
+2. **Dual-Model Hierarchical Router (Evaluation Benchmark):** Both models fit comfortably inside the 4 GB RAM ($1.92\text{ GB} + 0.98\text{ GB} + 0.04\text{ GB} \approx 2.94\text{ GB}$), routing Catalan & senior English to 3B and junior English to Math 1.5B (28.8% record).
+3. **Teaching Copilot (Socratic Companion):** `Qwen3.5-0.8B-aqua-reason` ($0.83\text{ GB}$, trained via `finetune/`) on Port 8081 for real-time 1–4s Socratic guidance.
 
 ```bash
 mkdir -p ~/models && cd ~/models
 
-# Multilingual General Model (Port 8081)
-curl -L -o Qwen2.5-3B-Instruct-Q4_K_M.gguf \
-  https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf
-
-# Math Calculation Specialist (Port 8083)
+# Official Board Solver (Port 8081 on board / Port 8083 in router)
 curl -L -o Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf \
   https://huggingface.co/bartowski/Qwen2.5-Math-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf
+
+# High-Capacity Multilingual Model (Port 8081 in router)
+curl -L -o Qwen2.5-3B-Instruct-Q4_K_M.gguf \
+  https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf
 
 # Embedding Model for Vector Search (Port 8082)
 curl -L -o bge-small-en-v1.5-q8_0.gguf \
@@ -146,8 +145,15 @@ curl -L -o bge-small-en-v1.5-q8_0.gguf \
 ```
 
 ### Step 4: Configure Background Model Services
-Create startup services (or run in `tmux`/background):
 
+#### On the Physical Arduino UNO Q (Official Board Service):
+```bash
+# Run math-llm.service with Qwen2.5-Math-1.5B
+sudo systemctl restart math-llm
+sudo systemctl restart math-embed
+```
+
+#### In Dual-Model Router Mode:
 ```bash
 # Terminal 1: Port 8081 (3B Instruct)
 llama-server -m ~/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf \

@@ -46,6 +46,7 @@
   .primary { padding: 8px 16px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
   .primary:disabled { opacity: .5; cursor: default; }
   .secondary { padding: 8px 16px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+  .secondary:disabled { opacity: .5; cursor: default; }
   table { border-collapse: collapse; margin-top: 10px; font-size: 14px; }
   td { padding: 3px 14px 3px 0; } td:first-child { color: var(--muted); }
   details { margin-top: 10px; } summary { cursor: pointer; color: var(--accent); }
@@ -54,7 +55,27 @@
   .sim { border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
   .sim img { max-width: 100%; max-height: 160px; display: block; margin-top: 6px; }
   .hint { color: var(--muted); font-size: 13px; }
+  .hint-box { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin-top: 8px; font-size: 14px; line-height: 1.5; }
+  .hint-box .rung { font-size: 11px; text-transform: uppercase; color: var(--accent); font-weight: 600; letter-spacing: 0.5px; }
+  .hint-box .level-badge { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 13px; margin-right: 6px; }
+  .solution-box { background: var(--ok-bg); border-color: var(--ok); }
+  .error-box { background: var(--bad-bg); border-color: var(--bad); }
+  .reasoning-box { background: #e6f4fa; border: 1px solid #4a90d9; border-radius: 6px; padding: 8px 12px; margin-top: 8px; font-size: 13px; }
+  .trans-box { background: #f4e6fa; border: 1px solid #904ab9; border-radius: 6px; padding: 8px 12px; margin-top: 8px; font-size: 13px; white-space: pre-wrap; }
+  .counter-box { background: #fce8e6; border: 1px solid #b3261e; border-radius: 6px; padding: 8px 12px; margin-top: 8px; font-size: 13px; }
+  .error-tag { background: #fff3cd; color: #856404; border: 1px solid #ffc107; border-radius: 3px; padding: 2px 6px; font-size: 12px; display: inline-block; margin: 2px 2px; }
   kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 12px; background: #fff; }
+  .step-btn { padding: 6px 14px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .step-btn:hover { border-color: var(--accent); }
+  .step-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .trap-btn { width: 56px; height: 44px; font-size: 18px; font-weight: 700; border: 2px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; }
+  .trap-btn:hover { border-color: var(--accent); }
+  .trap-btn.active { outline: 3px solid var(--accent); outline-offset: 1px; }
+  .trap-btn.is-correct { border-color: var(--ok); color: var(--ok); background: var(--ok-bg); }
+  .trap-btn.is-distractor { border-color: #d97706; color: #b45309; background: #fffbeb; }
+  .edge-time { font-size: 12px; font-weight: 600; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
+  .badge-fallback { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+  .badge-fast { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: var(--ok-bg); color: var(--ok); }
   @media (max-width: 800px) { main { grid-template-columns: 1fr; } aside { position: static; height: 300px; } }
 </style>
 </head>
@@ -83,18 +104,109 @@
       <div class="ocr" id="ocr"></div>
     </section>
 
-    <section>
-      <h2>1. Your answer</h2>
-      <div class="letters" id="mine"></div>
-      <div class="verdict" id="my-verdict"></div>
+    <section style="border: 2px solid var(--accent); background: #fafcff; border-radius: 8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+        <h2 style="margin:0; color:var(--accent); display:flex; align-items:center; gap:6px;">
+          🎯 Adaptive Training
+        </h2>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <label style="font-size:13px; font-weight:600; color:var(--muted); display:inline-flex; align-items:center; gap:4px;">
+            Starting Level:
+            <select id="adapt-level-select" style="font-weight:600; padding:3px 8px;">
+              <option value="0">Level 0</option>
+              <option value="1">Level 1</option>
+              <option value="2">Level 2</option>
+              <option value="3">Level 3</option>
+              <option value="4">Level 4</option>
+            </select>
+          </label>
+          <span id="adapt-level-badge" class="pill" style="font-size:13px; font-weight:700; background:var(--accent); color:#fff; border-color:transparent; padding:3px 12px;">
+            Current Level: 0
+          </span>
+        </div>
+      </div>
+
+      <div class="row" style="margin-bottom:10px; justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span id="adapt-streak-badge" class="pill" style="font-weight:600; font-size:13px; background:#fff;">
+            Streak: 0 correct 🔥
+          </span>
+          <span id="adapt-toast" style="font-size:13px; font-weight:600;"></span>
+        </div>
+        <button class="primary" id="adapt-next-btn" style="font-size:14px; padding:8px 16px;">
+          🎯 Next adaptive challenge
+        </button>
+      </div>
+
+      <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; font-size:13px;">
+        <div>
+          <b>Level <span id="adapt-stat-lvl">0</span> Stats:</b>
+          &nbsp; Unseen: <b id="cnt-unseen">0</b> &nbsp;|&nbsp;
+          Review (failed): <b id="cnt-review" style="color:var(--bad)">0</b> &nbsp;|&nbsp;
+          Mastered: <b id="cnt-mastered" style="color:var(--ok)">0</b>
+        </div>
+        <div id="adapt-reason-badge" style="font-size:12px; font-weight:600; color:var(--muted);"></div>
+      </div>
     </section>
 
     <section>
-      <h2>2. Ask the model</h2>
+      <h2>1. Your answer</h2>
+      <label class="hint"><input type="checkbox" id="teach" checked> Teaching mode: don't reveal the answer after a wrong try</label>
+      <div class="letters" id="mine"></div>
+      <div class="verdict" id="my-verdict"></div>
+      <button class="secondary" id="giveup" hidden style="margin-top:6px">Give up and show the answer</button>
+    </section>
+
+    <section>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h2 style="margin:0">2. Socratic Tutor (3 Guided Steps)</h2>
+        <span id="soc-timer" class="edge-time"></span>
+      </div>
+      <p class="hint" style="margin:0 0 10px;">Step-by-step guidance to discover the solution without revealing the answer (&lt;35s).</p>
+      <div class="row" style="margin-bottom:10px;gap:8px;">
+        <button class="step-btn active" id="soc-b1" data-step="1">Step 1: Understand</button>
+        <button class="step-btn" id="soc-b2" data-step="2">Step 2: Strategy</button>
+        <button class="step-btn" id="soc-b3" data-step="3">Step 3: Calculation</button>
+      </div>
+      <div class="row" style="margin-bottom:8px;">
+        <input type="text" id="soc-input" placeholder="Your thought or answer (optional)..." style="flex:1;min-width:240px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff;">
+        <button class="primary" id="soc-ask-btn">Ask for Guidance</button>
+      </div>
+      <div id="soc-result"></div>
+    </section>
+
+    <section>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h2 style="margin:0">3. Why is this option wrong?</h2>
+        <span id="trap-timer" class="edge-time"></span>
+      </div>
+      <p class="hint" style="margin:0 0 10px;">Select an option to see why it isn't the solution and where the mistake lies.</p>
+      <div class="letters" id="trap-options">
+        <button class="trap-btn" data-t="A">A</button>
+        <button class="trap-btn" data-t="B">B</button>
+        <button class="trap-btn" data-t="C">C</button>
+        <button class="trap-btn" data-t="D">D</button>
+        <button class="trap-btn" data-t="E">E</button>
+      </div>
+      <div id="trap-result"></div>
+    </section>
+
+    <section>
+      <h2>4. Get a hint (teaching mode)</h2>
+      <div class="row" style="margin-bottom:6px">
+        <button class="primary" id="get-hint">Get hint</button>
+        <button class="primary" id="show-solution" style="background:var(--bad)" disabled>Show solution</button>
+        <button class="secondary" id="reset-hints" style="font-size:12px">Reset</button>
+        <span class="hint" id="hint-status">Click "Get hint" for the first hint.</span>
+      </div>
+      <div id="hint-history"></div>
+    </section>
+
+    <section>
+      <h2>5. Ask the model</h2>
       <div class="row">
-        <label>Solved examples (RAG)
+        <label>Assistance examples (RAG)
           <select id="rag"><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
-        <label><input type="checkbox" id="vision"> Send the image (vision server, slow)</label>
         <button class="primary" id="ask">Ask the model</button>
         <span class="hint" id="asking"></span>
       </div>
@@ -102,14 +214,23 @@
     </section>
 
     <section>
-      <h2>3. Similar solved problems (embeddings)</h2>
+      <h2>6. Translate</h2>
+      <div class="row">
+        <select id="trans-lang" style="padding:4px 6px;border:1px solid var(--line);border-radius:4px;font:inherit;background:#fff;"></select>
+        <button class="secondary" id="trans-btn">Translate</button>
+      </div>
+      <div id="trans-result" style="margin-top:6px;font-size:13px;"></div>
+    </section>
+
+    <section>
+      <h2>7. Similar solved problems (embeddings)</h2>
       <div class="hint" id="sim-hint"></div>
       <div class="similar" id="similar"></div>
     </section>
 
     <section class="row">
       <button class="primary" id="next">Next problem</button>
-      <span class="hint">Keys: <kbd>A</kbd>–<kbd>E</kbd> answer · <kbd>M</kbd> ask the model · <kbd>N</kbd> next · <kbd>R</kbd> random</span>
+      <span class="hint">Keys: <kbd>A</kbd>–<kbd>E</kbd> answer · <kbd>M</kbd> ask · <kbd>N</kbd> next · <kbd>P</kbd> adaptive challenge · <kbd>R</kbd> random</span>
     </section>
   </div>
 </main>
@@ -117,14 +238,123 @@
 const $ = id => document.getElementById(id);
 const api = async (path, body) => {
   const r = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
-  const data = await r.json();
+  let data;
+  try { data = await r.json(); } catch { throw new Error(`${path}: HTTP ${r.status}`); }
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
 };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
-let info, all = [], shown = [], current = null, myChoice = null;
+let info, all = [], shown = [], current = null, myChoice = null, tried = new Set();
 const results = {};  // key -> {me: bool, model: bool}
+const MAX_HINTS = 3;  // rungs 1-3 are hints; the solution is always a separate, deliberate click
+
+// Adaptive Training & Spaced Repetition state
+let adaptiveLevel = 0;
+let adaptiveStreakCorrect = 0;
+let adaptiveStreakWrong = 0;
+let userHistory = {};
+try {
+  const savedHist = localStorage.getItem("m3kang_user_history");
+  if (savedHist) userHistory = JSON.parse(savedHist);
+  const savedLvl = localStorage.getItem("m3kang_adapt_level");
+  if (savedLvl !== null) adaptiveLevel = parseInt(savedLvl, 10) || 0;
+} catch {}
+
+let toastTimer = null;
+function showAdaptiveToast(msg, type = "info") {
+  const el = $("adapt-toast");
+  if (!el) return;
+  if (toastTimer) clearTimeout(toastTimer);
+  el.textContent = msg;
+  if (type === "up") {
+    el.style.color = "var(--ok)";
+  } else if (type === "down") {
+    el.style.color = "var(--bad)";
+  } else {
+    el.style.color = "var(--accent)";
+  }
+  toastTimer = setTimeout(() => {
+    if (el) el.textContent = "";
+  }, 6000);
+}
+
+function updateAdaptiveUI() {
+  const sel = $("adapt-level-select");
+  if (sel && sel.value !== String(adaptiveLevel)) sel.value = String(adaptiveLevel);
+  const badge = $("adapt-level-badge");
+  if (badge) badge.textContent = `Current Level: ${adaptiveLevel}`;
+  const statLvl = $("adapt-stat-lvl");
+  if (statLvl) statLvl.textContent = adaptiveLevel;
+
+  const streakEl = $("adapt-streak-badge");
+  if (streakEl) {
+    if (adaptiveStreakCorrect > 0) {
+      streakEl.textContent = `Streak: ${adaptiveStreakCorrect} correct 🔥`;
+      streakEl.style.color = "var(--ok)";
+      streakEl.style.borderColor = "var(--ok)";
+    } else if (adaptiveStreakWrong > 0) {
+      streakEl.textContent = `Streak: ${adaptiveStreakWrong} errors ⚠️`;
+      streakEl.style.color = "var(--bad)";
+      streakEl.style.borderColor = "var(--bad)";
+    } else {
+      streakEl.textContent = "Streak: 0";
+      streakEl.style.color = "var(--muted)";
+      streakEl.style.borderColor = "var(--line)";
+    }
+  }
+
+  const lvlProbs = all.filter(p => p.level === adaptiveLevel);
+  let unseen = 0, review = 0, mastered = 0;
+  lvlProbs.forEach(p => {
+    const h = userHistory[p.key] || userHistory[p.id] || { tries: 0, correct: 0, wrong: 0 };
+    if (!h.tries) unseen++;
+    else if (h.wrong > 0) review++;
+    else mastered++;
+  });
+  if ($("cnt-unseen")) $("cnt-unseen").textContent = unseen;
+  if ($("cnt-review")) $("cnt-review").textContent = review;
+  if ($("cnt-mastered")) $("cnt-mastered").textContent = mastered;
+
+  try {
+    localStorage.setItem("m3kang_adapt_level", adaptiveLevel);
+    localStorage.setItem("m3kang_user_history", JSON.stringify(userHistory));
+  } catch {}
+}
+
+async function loadAdaptiveNext() {
+  const btn = $("adapt-next-btn");
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = "🎯 Finding challenge…";
+  try {
+    const lang = $("f-lang").value;
+    const res = await api("/api/adaptive/next", {
+      current_level: adaptiveLevel,
+      history: userHistory,
+      language: lang || undefined,
+    });
+    if (res && res.key) {
+      await open(res.key);
+      const reasonBadge = $("adapt-reason-badge");
+      if (reasonBadge) {
+        if (res.reason === "unseen") {
+          reasonBadge.innerHTML = `<span style="color:var(--accent);">✨ New question (never seen)</span>`;
+        } else if (res.reason === "review_failed") {
+          reasonBadge.innerHTML = `<span style="color:var(--bad);">⚠️ Review (previously failed)</span>`;
+        } else {
+          reasonBadge.innerHTML = `<span style="color:var(--ok);">⭐ Consolidation review (mastered)</span>`;
+        }
+      }
+    }
+  } catch (err) {
+    showAdaptiveToast("Error loading adaptive challenge: " + err.message, "down");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🎯 Next adaptive challenge";
+    updateAdaptiveUI();
+  }
+}
 
 function setPill(id, up, text) { const el = $(id); el.textContent = text; el.className = "pill " + (up ? "up" : "down"); }
 
@@ -147,7 +377,7 @@ function renderList() {
 
 async function open(key) {
   current = await api("/api/problem?key=" + encodeURIComponent(key));
-  myChoice = null;
+  myChoice = null; tried = new Set(); $("giveup").hidden = true;
   $("meta").textContent = `${current.id} · ${current.language} · level ${current.level}${current.year ? " · " + current.year : ""}`;
   $("img").style.display = current.image ? "" : "none";
   if (current.image) { $("img").src = "/image/" + encodeURIComponent(current.key); $("img").alt = "Problem " + current.id; }
@@ -158,25 +388,121 @@ async function open(key) {
     : "OCR couldn't read the options. Without the image, the model sees only the question.";
   $("mine").innerHTML = "ABCDE".split("").map(l => `<button data-l="${l}">${l}</button>`).join("");
   $("my-verdict").textContent = ""; $("my-verdict").className = "verdict";
+  $("trans-result").innerHTML = ""; $("trans-btn").disabled = false;
   $("model").innerHTML = ""; $("asking").textContent = "";
+  selectSocStep(1);
+  $("soc-input").value = ""; $("soc-result").innerHTML = ""; $("soc-timer").innerHTML = "";
+  $("trap-result").innerHTML = ""; $("trap-timer").innerHTML = "";
+  document.querySelectorAll("#trap-options button").forEach(b => {
+    b.className = "trap-btn";
+    const l = b.dataset.t;
+    b.title = o[l] ? `${l}) ${o[l]}` : l;
+  });
+  renderHints();
+  syncHintUI();
   renderList();
   const row = document.querySelector(`#list div[data-key="${CSS.escape(key)}"]`);
   if (row) row.scrollIntoView({block: "nearest"});
   loadSimilar();
+  updateAdaptiveUI();
 }
 
-async function answer(letter) {
-  if (!current || myChoice) return;
-  myChoice = letter;
-  const r = await api("/api/check", {key: current.key, choice: letter});
-  (results[current.key] ||= {}).me = r.correct;
+// Marks the final state of the five letters once the answer is known.
+function paintAnswer(label) {
   document.querySelectorAll("#mine button").forEach(b => {
     b.disabled = true;
-    if (b.dataset.l === r.label) b.classList.add("right");
-    else if (b.dataset.l === letter) b.classList.add("wrong");
+    if (b.dataset.l === label) b.classList.add("right");
+    else if (tried.has(b.dataset.l)) b.classList.add("wrong");
   });
-  $("my-verdict").textContent = r.correct ? "Correct!" : `Not this time: the answer is ${r.label}.`;
-  $("my-verdict").className = "verdict " + (r.correct ? "ok" : "bad");
+  $("giveup").hidden = true;
+}
+
+// In teaching mode a wrong try does NOT reveal the answer: the student can try
+// another option, ask for a hint, or give up. The score counts the first try only.
+async function answer(letter) {
+  if (!current || myChoice || tried.has(letter)) return;
+  const key = current.key, teach = $("teach").checked;
+  const r = await api("/api/check", {key, choice: letter, reveal: !teach});
+  if (!current || current.key !== key) return;
+  const res = (results[key] ||= {});
+  if (!("me" in res)) res.me = r.correct;
+  tried.add(letter);
+
+  // Update spaced repetition history and dynamic adaptive level progression
+  const uEntry = (userHistory[key] ||= { tries: 0, correct: 0, wrong: 0 });
+  uEntry.tries += 1;
+  if (r.correct) {
+    uEntry.correct += 1;
+    adaptiveStreakCorrect += 1;
+    adaptiveStreakWrong = 0;
+    if (adaptiveStreakCorrect >= 3) {
+      if (adaptiveLevel < 4) {
+        adaptiveLevel += 1;
+        showAdaptiveToast(`Level up! 🔥 Streak of 3 (Now Level ${adaptiveLevel})`, "up");
+      } else {
+        showAdaptiveToast(`Max level reached! 🔥 Streak of 3`, "up");
+      }
+      adaptiveStreakCorrect = 0;
+    }
+  } else {
+    uEntry.wrong += 1;
+    adaptiveStreakWrong += 1;
+    adaptiveStreakCorrect = 0;
+    if (adaptiveStreakWrong >= 2) {
+      if (adaptiveLevel > 0) {
+        adaptiveLevel -= 1;
+        showAdaptiveToast(`Level adapted to reinforce concepts (Now Level ${adaptiveLevel})`, "down");
+      } else {
+        showAdaptiveToast(`Level adapted to reinforce concepts (Minimum Level 0)`, "info");
+      }
+      adaptiveStreakWrong = 0;
+    }
+  }
+  updateAdaptiveUI();
+
+  if (r.label) {  // right, or the server revealed it
+    myChoice = letter;
+    paintAnswer(r.label);
+    $("my-verdict").textContent = r.correct ? "Correct!" : `Not this time: the answer is ${r.label}.`;
+    $("my-verdict").className = "verdict " + (r.correct ? "ok" : "bad");
+  } else {
+    const b = document.querySelector(`#mine button[data-l="${letter}"]`);
+    b.classList.add("wrong"); b.disabled = true;
+    $("my-verdict").textContent = `Not yet (${tried.size} wrong). Try another option or ask for a hint.`;
+    $("my-verdict").className = "verdict bad";
+    $("giveup").hidden = false;
+  }
+  score(); renderList();
+}
+
+async function giveUp() {
+  if (!current || myChoice) return;
+  const key = current.key;
+  const r = await api("/api/reveal", {key});
+  if (!current || current.key !== key) return;
+  myChoice = "-";
+  const res = (results[key] ||= {});
+  if (!("me" in res)) res.me = false;
+
+  const uEntry = (userHistory[key] ||= { tries: 0, correct: 0, wrong: 0 });
+  uEntry.tries += 1;
+  uEntry.wrong += 1;
+  adaptiveStreakWrong += 1;
+  adaptiveStreakCorrect = 0;
+  if (adaptiveStreakWrong >= 2) {
+    if (adaptiveLevel > 0) {
+      adaptiveLevel -= 1;
+      showAdaptiveToast(`Level adapted to reinforce concepts (Now Level ${adaptiveLevel})`, "down");
+    } else {
+      showAdaptiveToast(`Level adapted to reinforce concepts (Minimum Level 0)`, "info");
+    }
+    adaptiveStreakWrong = 0;
+  }
+  updateAdaptiveUI();
+
+  paintAnswer(r.label);
+  $("my-verdict").textContent = `The answer is ${r.label}.`;
+  $("my-verdict").className = "verdict bad";
   score(); renderList();
 }
 
@@ -186,7 +512,7 @@ async function ask() {
   $("ask").disabled = true;
   const tick = setInterval(() => $("asking").textContent = `Thinking… ${((Date.now() - start) / 1000).toFixed(0)} s`, 250);
   try {
-    const r = await api("/api/ask", {key, rag: +$("rag").value, vision: $("vision").checked});
+    const r = await api("/api/ask", {key, rag: +$("rag").value, vision: false});
     if (!current || current.key !== key) return;
     (results[key] ||= {}).model = r.correct;
     const limit = info.time_limit, over = r.seconds > limit;
@@ -219,19 +545,287 @@ function nextStep(r) {
   return "one right answer can be luck. Run eval.py on the whole validation set to see if a change really helps.";
 }
 
+// ── Teaching: Socratic Tutor & Trap Detector (Edge Optimized) ──────────
+
+let currentSocStep = 1;
+
+function selectSocStep(step) {
+  currentSocStep = step;
+  [1, 2, 3].forEach(s => {
+    const btn = $(`soc-b${s}`);
+    if (btn) btn.classList.toggle("active", s === step);
+  });
+}
+
+async function askSocratic(step = null) {
+  if (!current) return;
+  if (step !== null) selectSocStep(step);
+  const s = currentSocStep;
+  const key = current.key;
+  const studentInput = $("soc-input").value.trim();
+  const btn = $("soc-ask-btn");
+  btn.disabled = true;
+  $("soc-timer").innerHTML = `<span class="hint">⚡ Requesting step ${s}…</span>`;
+  const t0 = performance.now();
+  try {
+    const r = await api("/api/socratic", { key, step: s, student_input: studentInput });
+    if (!current || current.key !== key) return;
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+    let tag = `<span class="edge-time">⚡ ${elapsed}s</span>`;
+    if (r.cached) {
+      tag += ` <span class="badge-fast">cache</span>`;
+    } else if (r.status === "fallback" || r.rag_fallback) {
+      tag += ` <span class="badge-fallback">⚠️ RAG Fallback</span>`;
+    }
+    $("soc-timer").innerHTML = tag;
+
+    const stepTitles = {
+      1: "Step 1: Understand the data and the goal",
+      2: "Step 2: Strategy and mathematical modeling",
+      3: "Step 3: Calculation and edge-case checking",
+    };
+    $("soc-result").innerHTML = `
+      <div class="hint-box" style="border-left: 4px solid var(--accent); margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div>
+            <span class="level-badge">${s}</span>
+            <span class="rung">${esc(stepTitles[s] || "Socratic Guidance")}</span>
+          </div>
+        </div>
+        <div style="font-size:14px;line-height:1.5;">${esc(r.text)}</div>
+      </div>
+    `;
+  } catch (err) {
+    $("soc-timer").innerHTML = `<span style="color:var(--bad)">Error</span>`;
+    $("soc-result").innerHTML = `<div class="hint-box error-box"><b>Error:</b> ${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function inspectTrap(option) {
+  if (!current) return;
+  const key = current.key;
+  document.querySelectorAll("#trap-options button").forEach(b => {
+    b.classList.toggle("active", b.dataset.t === option);
+  });
+  $("trap-timer").innerHTML = `<span class="hint">⚡ Analyzing option ${option}…</span>`;
+  const t0 = performance.now();
+  try {
+    const r = await api("/api/trap", { key, option });
+    if (!current || current.key !== key) return;
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+    let tag = `<span class="edge-time">⚡ ${elapsed}s</span>`;
+    if (r.rule || r.status === "heuristic") {
+      tag += ` <span class="badge-fast">⚡ Heuristic</span>`;
+    } else if (r.cached) {
+      tag += ` <span class="badge-fast">cache</span>`;
+    } else if (r.status === "fallback") {
+      tag += ` <span class="badge-fallback">⚠️ Fallback</span>`;
+    }
+    $("trap-timer").innerHTML = tag;
+
+    const btn = document.querySelector(`#trap-options button[data-t="${option}"]`);
+    if (btn) {
+      if (r.is_correct) {
+        btn.classList.add("is-correct");
+      } else {
+        btn.classList.add("is-distractor");
+      }
+    }
+
+    const boxBorder = r.is_correct ? "var(--ok)" : "#d97706";
+    const boxBg = r.is_correct ? "var(--ok-bg)" : "#fffbeb";
+    $("trap-result").innerHTML = `
+      <div class="hint-box" style="border-left: 4px solid ${boxBorder}; background: ${boxBg}; margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <b style="color:${r.is_correct ? "var(--ok)" : "#b45309"}">
+            ${r.is_correct ? "✓ Correct Solution" : "⚠️ Why this is not the solution"} (Option ${esc(option)})
+          </b>
+        </div>
+        <div style="font-size:14px;line-height:1.5;">${esc(r.text)}</div>
+      </div>
+    `;
+  } catch (err) {
+    $("trap-timer").innerHTML = `<span style="color:var(--bad)">Error</span>`;
+    $("trap-result").innerHTML = `<div class="hint-box error-box"><b>Error:</b> ${esc(err.message)}</div>`;
+  }
+}
+
+// ── Teaching: hint ladder ──────────────────────────────────────────────
+// The client owns the ladder: it counts the hints already shown for the current
+// problem and asks the server for exactly that rung (1-3). The solution only
+// appears when the student clicks "Show solution" on purpose.
+
+function hintHistory() {
+  if (!current) return [];
+  return ((window._hints ||= {})[current.key] ||= []);
+}
+
+function renderHints() {
+  const container = $("hint-history");
+  if (!current) { container.innerHTML = ""; return; }
+  const history = hintHistory();
+  if (history.length === 0) { container.innerHTML = ""; return; }
+  const rungLabels = { 1: "RAG example (similar problem)", 2: "Method hint", 3: "Model hint", 4: "Full solution" };
+  container.innerHTML = history.map((h, i) => {
+    if (h.type === "error") return `<div class="hint-box error-box"><b>⚠️ Error:</b> ${esc(h.text)}</div>`;
+    if (h.type === "solution" || h.level === 4) {
+      const formatted = esc(h.text).replace(
+        /\\boxed\{([A-E])\}/g,
+        '<span style="display:inline-block; border:2px solid var(--ok); background:#fff; color:var(--ok); font-weight:800; padding:2px 10px; border-radius:6px; margin:4px 0;">\\boxed{$1}</span>'
+      );
+      return `<div class="hint-box solution-box" style="border-left: 4px solid var(--ok);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span class="rung" style="color:var(--ok); font-weight:700;">💡 Advanced Mathematical Reasoning & Solution (Micro-CoT)</span>
+          <span class="badge-fast">Micro-CoT</span>
+        </div>
+        <div style="margin-top:6px; white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13.5px; line-height:1.6;">${formatted}</div>
+      </div>`;
+    }
+    return `<div class="hint-box"><span class="level-badge">${i + 1}</span><span class="rung">${esc(rungLabels[h.level] || "Hint")}</span><div style="margin-top:4px">${esc(h.text)}</div></div>`;
+  }).join("");
+  container.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// Sets the buttons and the status line from the hint history of the current problem.
+function syncHintUI() {
+  const history = hintHistory();
+  const hints = history.filter(h => h.type !== "error" && h.type !== "solution").length;
+  const solved = history.some(h => h.type === "solution");
+  $("get-hint").disabled = solved || hints >= MAX_HINTS;
+  $("show-solution").disabled = solved || hints < MAX_HINTS;
+  $("show-solution").textContent = solved ? "Shown" : "Show solution";
+  $("hint-status").textContent =
+    solved ? "Solution revealed."
+    : hints >= MAX_HINTS ? "No more hints. Click \"Show solution\" if you want it."
+    : hints === 0 ? "Click \"Get hint\" for the first hint."
+    : `Hint ${hints}/${MAX_HINTS}. Click "Get hint" for more help.`;
+}
+
+async function getHint() {
+  if (!current) return;
+  const key = current.key;
+  const hist = hintHistory();
+  const rung = hist.filter(h => h.type !== "error" && h.type !== "solution").length + 1;
+  if (rung > MAX_HINTS) return;
+  const btn = $("get-hint");
+  const start = Date.now();
+  btn.disabled = true; btn.textContent = "Thinking…";
+  const tick = setInterval(() => btn.textContent = `Thinking… ${((Date.now() - start) / 1000).toFixed(0)} s`, 500);
+  try {
+    const r = await api("/api/hint", { key, type: rung });
+    ((window._hints ||= {})[key] ||= []).push(r);
+  } catch (e) {
+    ((window._hints ||= {})[key] ||= []).push({ type: "error", text: e.message });
+  } finally {
+    clearInterval(tick);
+    btn.textContent = "Get hint";
+    if (current && current.key === key) { renderHints(); syncHintUI(); }
+  }
+}
+
+async function showSolution() {
+  if (!current) return;
+  const key = current.key;
+  const btn = $("show-solution");
+  btn.disabled = true; btn.textContent = "Loading…";
+  try {
+    const r = await api("/api/solution", { key });
+    ((window._hints ||= {})[key] ||= []).push(r.type ? r : { ...r, type: "solution", level: 4 });
+  } catch (e) {
+    ((window._hints ||= {})[key] ||= []).push({ type: "error", text: e.message });
+  } finally {
+    if (current && current.key === key) { renderHints(); syncHintUI(); }
+  }
+}
+
+async function resetHints() {
+  if (!current) return;
+  try { await api("/api/hint-reset", { key: current.key }); } catch {}
+  if (window._hints) delete window._hints[current.key];
+  renderHints();
+  syncHintUI();
+}
+
+// ── Teaching: check reasoning and translate ────────────────────────────
+
+async function checkReasoning() {
+  if (!current) return;
+  const reasoning = $("reasoning-input").value.trim();
+  if (!reasoning) { $("reasoning-result").innerHTML = `<span class="hint">Write your answer or your steps first.</span>`; return; }
+  const key = current.key;
+  $("reasoning-check").disabled = true;
+  $("reasoning-result").innerHTML = `<span class="hint">Checking…</span>`;
+  try {
+    const r = await api("/api/reasoning", { key, reasoning });
+    if (!current || current.key !== key) return;
+    if (r.type === "counterexample") {
+      let html = `<div class="counter-box">⚡ <b>Counterexample:</b> ${esc(r.text || "")}`;
+      if (r.counterexample) {
+        html += `<br><small>Similar ${esc(r.counterexample.id)} (sim ${r.counterexample.score}): if you solve like yours → ${esc(r.counterexample.wrong_option)}) ${esc(r.counterexample.wrong_value)}, correct is ${esc(r.counterexample.correct_letter)})</small>`;
+      }
+      html += `</div>`;
+      $("reasoning-result").innerHTML = html;
+    } else if (r.type === "correction") {
+      let html = `<div class="reasoning-box">✎ <b>Correction:</b> ${esc(r.text || "")}`;
+      if (r.detected_errors) {
+        html += r.detected_errors.map(e => `<div style="margin-top:4px"><span class="error-tag">⚠ ${esc(e)}</span></div>`).join("");
+      }
+      html += `</div>`;
+      $("reasoning-result").innerHTML = html;
+    } else if (r.type === "rule_based") {
+      const msg = r.text || (r.detected_errors && r.detected_errors[0]) || "No specific error detected. Try again!";
+      $("reasoning-result").innerHTML = `<div class="reasoning-box">⚠ ${esc(msg)}</div>`;
+    } else {
+      $("reasoning-result").innerHTML = `<div class="reasoning-box">${esc(r.text || "No feedback available.")}</div>`;
+    }
+  } catch (e) {
+    $("reasoning-result").innerHTML = `<div style="color:var(--bad);font-size:13px;">Error: ${esc(e.message)}</div>`;
+  } finally {
+    $("reasoning-check").disabled = false;
+  }
+}
+
+async function translate() {
+  if (!current) return;
+  const key = current.key;
+  const lang = $("trans-lang").value;
+  if (!lang) return;
+  $("trans-btn").disabled = true;
+  $("trans-result").innerHTML = `<span class="hint">Translating…</span>`;
+  try {
+    const r = await api("/api/translate", { key, language: lang });
+    if (!current || current.key !== key) return;
+    if (r.found) {
+      $("trans-result").innerHTML = `<div class="trans-box">🌐 <b>${esc(lang.toUpperCase())}:</b> ${esc(r.text)}<br><small>${esc(r.id)} · level ${r.level}</small></div>`;
+    } else {
+      $("trans-result").innerHTML = `<span class="hint">No ${esc(lang)} version of this problem in the data. Prepare more languages with prepare_m3kang.py --languages.</span>`;
+    }
+  } catch (e) {
+    $("trans-result").innerHTML = `<span style="color:var(--bad);">Error: ${esc(e.message)}</span>`;
+  } finally {
+    $("trans-btn").disabled = false;
+  }
+}
+
 async function loadSimilar() {
   $("similar").innerHTML = "";
   if (!info.index) { $("sim-hint").textContent = "No retrieval index yet. Build it with: python3 build_index.py --only-with-options"; return; }
   if (!info.embed) { $("sim-hint").textContent = "The embedding server is down (port 8082)."; return; }
   const key = current.key;
   $("sim-hint").textContent = "Searching…";
-  const hits = await api(`/api/similar?key=${encodeURIComponent(key)}&k=3`);
-  if (current.key !== key) return;
-  $("sim-hint").textContent = "The training problems whose embeddings are closest to this one. A score near 1 means very similar. With RAG, the model sees the top ones as solved examples.";
-  $("similar").innerHTML = hits.map(h => `
-    <div class="sim"><b>${h.score}</b> · ${esc(h.id)} · level ${h.level} · answer <b>${esc(h.label)}</b>
-      ${h.image ? `<img loading="lazy" src="/image/${encodeURIComponent(h.key)}" alt="Similar problem ${esc(h.id)}">` : `<div class="text">${esc(h.text)}</div>`}
-    </div>`).join("");
+  try {
+    const hits = await api(`/api/similar?key=${encodeURIComponent(key)}&k=3`);
+    if (current.key !== key) return;
+    $("sim-hint").textContent = "The training problems whose embeddings are closest to this one. A score near 1 means very similar. With RAG, the model sees the top ones as solved examples.";
+    $("similar").innerHTML = hits.map(h => `
+      <div class="sim"><b>${h.score}</b> · ${esc(h.id)} · level ${h.level} · answer <b>${esc(h.label)}</b>
+        ${h.image ? `<img loading="lazy" src="/image/${encodeURIComponent(h.key)}" alt="Similar problem ${esc(h.id)}">` : `<div class="text">${esc(h.text)}</div>`}
+      </div>`).join("");
+  } catch (e) {
+    $("sim-hint").textContent = "Couldn't search: " + e.message;
+  }
 }
 
 function next(randomly) {
@@ -247,30 +841,52 @@ async function main() {
   setPill("s-embed", info.embed, "embeddings " + (info.embed ? "up" : "down"));
   setPill("s-vision", info.vision, "vision " + (info.vision ? "up" : "off"));
   $("s-data").textContent = `${info.count} problems · ${info.images} images · ${info.index} in index`;
-  $("vision").disabled = !info.vision;
   $("rag").disabled = !info.index;
   info.languages.forEach(l => $("f-lang").insertAdjacentHTML("beforeend", `<option>${esc(l)}</option>`));
   info.levels.forEach(l => $("f-level").insertAdjacentHTML("beforeend", `<option>${l}</option>`));
+  // Translate only offers the languages that exist in the data.
+  $("trans-lang").innerHTML = info.languages.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join("");
   all = await api("/api/problems");
   renderList();
+  updateAdaptiveUI();
   if (shown.length) open(shown[0].key);
 }
 
+$("adapt-level-select").addEventListener("change", e => {
+  adaptiveLevel = parseInt(e.target.value, 10);
+  adaptiveStreakCorrect = 0;
+  adaptiveStreakWrong = 0;
+  updateAdaptiveUI();
+});
+$("adapt-next-btn").addEventListener("click", loadAdaptiveNext);
 $("list").addEventListener("click", e => { const d = e.target.closest("div[data-key]"); if (d) open(d.dataset.key); });
 $("mine").addEventListener("click", e => { if (e.target.dataset.l) answer(e.target.dataset.l); });
+$("soc-b1").addEventListener("click", () => { selectSocStep(1); askSocratic(); });
+$("soc-b2").addEventListener("click", () => { selectSocStep(2); askSocratic(); });
+$("soc-b3").addEventListener("click", () => { selectSocStep(3); askSocratic(); });
+$("soc-ask-btn").addEventListener("click", () => askSocratic());
+$("soc-input").addEventListener("keydown", e => { if (e.key === "Enter") askSocratic(); });
+$("trap-options").addEventListener("click", e => { if (e.target.dataset.t) inspectTrap(e.target.dataset.t); });
 ["f-lang", "f-level", "f-options"].forEach(id => $(id).addEventListener("change", renderList));
 $("ask").addEventListener("click", ask);
+$("get-hint").addEventListener("click", getHint);
+$("show-solution").addEventListener("click", showSolution);
+$("reset-hints").addEventListener("click", resetHints);
+$("giveup").addEventListener("click", giveUp);
+$("trans-btn").addEventListener("click", translate);
 $("next").addEventListener("click", () => next(false));
 $("random").addEventListener("click", () => next(true));
 document.addEventListener("keydown", e => {
-  if (e.target.tagName === "SELECT" || e.metaKey || e.ctrlKey || e.altKey) return;
+  // Don't steal keys while the student is typing.
+  if (e.target.matches("select, input[type=text], textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key.toUpperCase();
   if ("ABCDE".includes(k) && k.length === 1) answer(k);
   else if (k === "M") ask();
   else if (k === "N") next(false);
   else if (k === "R") next(true);
+  else if (k === "P") loadAdaptiveNext();
 });
-main();
+main().catch(e => { $("meta").textContent = "Error: " + e.message; });
 </script>
 </body>
 </html>

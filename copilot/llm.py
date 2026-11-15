@@ -232,7 +232,8 @@ def answer_micro_cot(problem, examples=(), timeout=60, image_b64=None, url=URL, 
         "cache_prompt": True,
     }, timeout=timeout)
     choices = response.get("choices") or []
-    text = choices[0]["message"]["content"].strip() if choices else ""
+    msg0 = choices[0]["message"] if choices else {}
+    text = (msg0.get("content") or msg0.get("reasoning_content") or "").strip()
     finish_reason = choices[0].get("finish_reason") if choices else None
     matched = match_option_from_text(text, problem.get("options") or {}, allow_numeric=(finish_reason != "length"))
     timings = dict(response.get("timings") or {})
@@ -293,7 +294,8 @@ def answer_elimination(problem, examples=(), timeout=60, image_b64=None, url=URL
         "cache_prompt": True,
     }, timeout=timeout)
     choices = response.get("choices") or []
-    text = choices[0]["message"]["content"].strip() if choices else ""
+    msg0 = choices[0]["message"] if choices else {}
+    text = (msg0.get("content") or msg0.get("reasoning_content") or "").strip()
     finish_reason = choices[0].get("finish_reason") if choices else None
     timings = dict(response.get("timings") or {})
 

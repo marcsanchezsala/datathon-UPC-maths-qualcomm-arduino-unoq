@@ -1,0 +1,12 @@
+# Fine-tuning on a GPU (Colab L4/A100, or a laptop). Not for the board.
+# torch is not pinned: use the one Colab ships (tested here with torch 2.15.0, CUDA 13.2).
+transformers==5.23.0
+peft==0.21.3
+datasets==5.2.0
+accelerate==1.15.0
+# Fast kernels for Qwen3.5's linear attention: without them training is slower and needs more memory
+flash-linear-attention==0.6.0
+# For llama.cpp's convert_hf_to_gguf.py
+sentencepiece==0.2.3
+safetensors==0.8.0
+pyyaml==6.0.3
