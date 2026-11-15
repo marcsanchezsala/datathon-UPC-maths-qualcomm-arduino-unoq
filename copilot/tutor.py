@@ -283,7 +283,7 @@ def tutor_messages(problem, hint_level=3, student_reasoning=None):
     return [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]
 
 
-def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, timeout=35):
+def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, timeout=60):
     """Generate a teaching response for the given hint level.
 
     hint_level:
@@ -293,7 +293,7 @@ def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, ti
       4 = Full solution (Micro-CoT 2-3 lines math logic + \boxed{LETTER})
       5 = Student reasoning correction (LLM, short)
     """
-    timeout = min(timeout, 35)
+    timeout = min(timeout, 60)
     # Level 1: Conceptual Strategy Hint + Reference Example (RAG)
     if hint_level == 1:
         method_hint = get_method_hint(problem)
@@ -397,13 +397,13 @@ def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, ti
         return {"text": f"Error generating response: {e}", "type": "error", "level": hint_level}
 
 
-def tutor_student_correction(problem, student_reasoning, index=None, timeout=35):
+def tutor_student_correction(problem, student_reasoning, index=None, timeout=60):
     """Special endpoint for student reasoning correction.
 
     Finds a counterexample from training data where the student's mistake
     would lead to a wrong answer in the similar problem.
     """
-    timeout = min(timeout, 40)
+    timeout = min(timeout, 60)
     # 1. Detect typical errors (instant, no LLM)
     detected_errors = detect_typical_errors(student_reasoning, "")
 
@@ -755,8 +755,8 @@ SOCRATIC_DEFAULT_FALLBACKS["eng"] = SOCRATIC_DEFAULT_FALLBACKS["rates"]["eng"]
 SOCRATIC_DEFAULT_FALLBACKS["esp"] = SOCRATIC_DEFAULT_FALLBACKS["rates"]["esp"]
 
 
-def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout=35):
-    """Generate a 3-step Socratic guiding question adapted to edge constraints (<35s, <=50 tokens).
+def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout=60):
+    """Generate a 3-step Socratic guiding question adapted to edge constraints (<60s, <=50 tokens).
 
     step:
       1 = Understanding initial data / base shape / individual quantities
@@ -768,7 +768,7 @@ def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout
     except (TypeError, ValueError):
         step = 1
     step = max(1, min(step, 3))
-    timeout = min(timeout, 35)
+    timeout = min(timeout, 60)
 
     prob_text = problem.get("text", "") if isinstance(problem, dict) else str(problem)
     domain = detect_problem_domain(prob_text)
@@ -852,11 +852,11 @@ def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout
         }
 
 
-def tutor_analyze_trap(problem, option_letter, index=None, timeout=35):
+def tutor_analyze_trap(problem, option_letter, index=None, timeout=60):
     """Analyze why an option is an attractive distractor (Trap Detection).
 
     Checks deterministic heuristic rules first (instant, 0s).
-    Falls back to LLM (<35s, max 50 tokens) or default distractor reasoning.
+    Falls back to LLM (<60s, max 50 tokens) or default distractor reasoning.
     """
     option_letter = str(option_letter).upper().strip()
     correct_label = str(problem.get("label", "")).upper().strip()
@@ -1043,7 +1043,7 @@ def tutor_analyze_trap(problem, option_letter, index=None, timeout=35):
         }
 
     # If no heuristic activates, call LLM with true answer context
-    timeout = min(timeout, 35)
+    timeout = min(timeout, 60)
     val_repr = opt_val_str if opt_val_str else option_letter
     lang_name = "Catalan" if lang == "cat" else ("Spanish" if lang == "esp" else "English")
 
