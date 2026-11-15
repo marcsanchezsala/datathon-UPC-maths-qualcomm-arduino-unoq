@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""M3Kang explorer: look at problems, answer them yourself, then ask the model.
+"""M3Kang Teaching Copilot Server - Edge Math Companion.
 
-    python3 explorer/server.py
-    python3 explorer/server.py --input data/val.jsonl --images data/images --rag 1
+Serves the teaching interface for the Math on the Edge datathon.
+Standard library only. Runs on the Arduino UNO Q.
 
-Then open http://127.0.0.1:8000 in a browser on the board, or forward the
-port to your laptop (see the README). Standard library only.
+    python3 explorer/server.py --input data/val.jsonl --index data/index.db --images data/images
 """
 import argparse
 import base64
 import json
 import os
+import re
 import sys
+import traceback
 import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -22,21 +24,35 @@ from copilot.config import CONFIG, ROOT  # noqa: E402
 from copilot.llm import build_messages  # noqa: E402
 from copilot.pipeline import solve  # noqa: E402
 from copilot.rag import Index  # noqa: E402
+from copilot.tutor import (  # noqa: E402
+    tutor_generate,
+    tutor_student_correction,
+    tutor_adaptive_next,
+    select_adaptive_problem,
+    tutor_socratic_step,
+    detect_problem_domain,
+    tutor_analyze_trap,
+    find_rag_examples,
+    find_counterexample,
+    detect_typical_errors,
+    translate_problem,
+    _build_problem_text,
+)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LLM = f"http://127.0.0.1:{CONFIG['LLM_PORT']}"
 EMBED = f"http://127.0.0.1:{CONFIG['EMBED_PORT']}"
 VISION = f"http://127.0.0.1:{CONFIG['VISION_PORT']}"
-# Reading an image takes the board much longer than reading text
 VISION_TIME_LIMIT = 300
+MAX_HINT_LEVEL = 3  # rungs 1-3 are hints; rung 4 (the solution) only via /api/solution
 
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--input", default="data/val.jsonl", help="problems to explore")
-    p.add_argument("--images", default="data/images", help="folder written by prepare_m3kang.py --save-images")
+    p.add_argument("--images", default="data/images", help="folder from prepare_m3kang.py --save-images")
     p.add_argument("--index", default="data/index.db", help="retrieval index from build_index.py")
-    p.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 to open it to your network")
+    p.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 to open on network")
     p.add_argument("--port", type=int, default=8000)
     return p.parse_args()
 
@@ -68,12 +84,14 @@ def public(problem, images):
 
 
 def printable(messages):
-    """The prompt as plain text, with the image replaced by a marker."""
+    """The prompt as plain text."""
     lines = []
     for m in messages:
         content = m["content"]
         if isinstance(content, list):
-            content = "\n".join("[image]" if part["type"] == "image_url" else part["text"] for part in content)
+            content = "\n".join(
+                "[image]" if part["type"] == "image_url" else part["text"] for part in content
+            )
         lines.append(f"--- {m['role']} ---\n{content}")
     return "\n".join(lines)
 
@@ -82,12 +100,18 @@ class App:
     def __init__(self, args):
         os.chdir(ROOT)
         self.images = args.images
-        with open(args.input) as f:
+        with open(args.input, encoding="utf-8") as f:
             self.problems = [json.loads(line) for line in f if line.strip()]
         self.by_key = {key_of(p): p for p in self.problems}
         self.index = Index(args.index) if os.path.exists(args.index) else None
         self.input = args.input
-        # Images the page may ask for: the problems, and the solved problems in the index
+        # Teaching state
+        self.hint_state = {}  # key -> {level, history, reasoning, ...}
+        self.student_profile = {}  # key -> {correct, wrong, level}
+        self.hint_cache = {}  # (key, level) -> hint, so a repeated click does not cost 10-30 s
+        self.socratic_cache = {}  # (key, step, student_input) -> response (bounded)
+        self.trap_cache = {}  # (key, option) -> response (bounded)
+        # Images the page may ask for
         self.image_keys = set(self.by_key)
         if self.index:
             self.image_keys |= {row[0].replace("|", "_") for row in self.index.rows}
@@ -98,7 +122,9 @@ class App:
             "count": len(self.problems),
             "languages": sorted({p["language"] for p in self.problems}),
             "levels": sorted({p["level"] for p in self.problems}),
-            "images": sum(os.path.exists(os.path.join(self.images, k + ".png")) for k in self.by_key),
+            "images": sum(
+                os.path.exists(os.path.join(self.images, k + ".png")) for k in self.by_key
+            ),
             "index": len(self.index.rows) if self.index else 0,
             "llm": is_up(LLM),
             "embed": is_up(EMBED),
@@ -107,23 +133,267 @@ class App:
         }
 
     def listing(self):
-        return [{"key": key_of(p), "id": p["id"], "language": p["language"], "level": p["level"],
-                 "options": bool(p.get("options"))} for p in self.problems]
+        return [
+            {
+                "key": key_of(p),
+                "id": p["id"],
+                "language": p["language"],
+                "level": p["level"],
+                "options": bool(p.get("options")),
+            }
+            for p in self.problems
+        ]
 
     def image_b64(self, key):
         with open(os.path.join(self.images, key + ".png"), "rb") as f:
             return base64.b64encode(f.read()).decode()
 
-    def check(self, key, choice):
+    def check(self, key, choice, reveal=True):
+        """Check a choice. The label is only sent back if it is right, or if `reveal`.
+
+        With reveal=False (teaching mode) a wrong try does not give the answer away.
+        """
         label = self.by_key[key]["label"]
-        return {"correct": choice == label, "label": label}
+        correct = choice == label
+        state = self._get_or_create_state(key)
+        state["last_correct"] = correct
+        if correct:
+            state["score_correct"] = state.get("score_correct", 0) + 1
+        else:
+            state["score_wrong"] = state.get("score_wrong", 0) + 1
+        return {"correct": correct, "label": label if (correct or reveal) else None}
+
+    def reveal(self, key):
+        """The student gave up: show the answer."""
+        return {"label": self.by_key[key]["label"]}
+
+    def _get_or_create_state(self, key):
+        if key not in self.hint_state:
+            self.hint_state[key] = {
+                "level": 1,
+                "history": [],
+                "reasoning": "",
+                "correct": False,
+                "score_correct": 0,
+                "score_wrong": 0,
+            }
+        return self.hint_state[key]
+
+    def _cache_put(self, cache, key, value, max_size=128):
+        """Keep caches bounded to protect the 4GB RAM budget on Arduino UNO Q."""
+        if len(cache) >= max_size:
+            try:
+                oldest = next(iter(cache))
+                del cache[oldest]
+            except (StopIteration, KeyError):
+                pass
+        cache[key] = value
+
+    # ── Teaching: Socratic Tutor & Trap Detector (Edge Optimized) ───────
+
+    def socratic_step(self, key, step, student_input=None):
+        """Generate a 3-step Socratic guiding question with caching and fallback."""
+        problem = self.by_key[key]
+        try:
+            step = int(step)
+        except (TypeError, ValueError):
+            step = 1
+        step = max(1, min(step, 3))
+        clean_input = (student_input or "").strip()
+        cache_key = (key, step, clean_input)
+        if cache_key in self.socratic_cache:
+            res = dict(self.socratic_cache[cache_key])
+            res["cached"] = True
+            return res
+
+        try:
+            result = tutor_socratic_step(
+                problem, step=step, student_input=clean_input, index=self.index, timeout=35
+            )
+        except Exception as e:
+            result = {
+                "text": f"Pas {step}: Identifica les dades de l'enunciat i planteja el camí de resolució.",
+                "step": step,
+                "type": "socratic",
+                "status": "fallback",
+                "error": str(e),
+            }
+        self._cache_put(self.socratic_cache, cache_key, result)
+        return result
+
+    def analyze_trap(self, key, option):
+        """Analyze why an option is an attractive distractor (Trap Detection)."""
+        problem = self.by_key[key]
+        option = str(option).upper().strip()
+        cache_key = (key, option)
+        if cache_key in self.trap_cache:
+            res = dict(self.trap_cache[cache_key])
+            res["cached"] = True
+            return res
+
+        try:
+            result = tutor_analyze_trap(
+                problem, option_letter=option, index=self.index, timeout=35
+            )
+        except Exception as e:
+            result = {
+                "option": option,
+                "is_correct": False,
+                "text": f"L'opció {option} és un distractor habitual fruit d'un error de càlcul o lectura.",
+                "status": "fallback",
+                "error": str(e),
+            }
+        self._cache_put(self.trap_cache, cache_key, result)
+        return result
+
+    # ── Teaching: hint ladder (3 hints, then the solution on request) ────
+
+    def get_hint(self, key, hint_type=None):
+        """Generate a hint. The page sends the rung it wants (1-3).
+
+        The ladder is capped at MAX_HINT_LEVEL: the solution (rung 4) is never
+        returned here, only by get_solution, when the student asks for it.
+        """
+        problem = self.by_key[key]
+        state = self._get_or_create_state(key)
+        try:
+            level = int(hint_type) if hint_type is not None else state["level"]
+        except (TypeError, ValueError):
+            level = state["level"]
+        level = max(1, min(level, MAX_HINT_LEVEL))
+        cached = self.hint_cache.get((key, level))
+        if cached:
+            state["level"] = min(level + 1, MAX_HINT_LEVEL)
+            return cached
+        result = tutor_generate(problem, index=self.index, hint_level=level, timeout=35)
+        if self._leaks(problem, result.get("text", "")):
+            result = {
+                "type": "hint", "level": level, "withheld": True,
+                "text": "This hint would give the answer away, so it was withheld. "
+                        "Write your own steps and use \"Check your reasoning\", or ask for the next hint.",
+            }
+        elif result.get("type") != "error":
+            self.hint_cache[(key, level)] = result
+        state["level"] = min(level + 1, MAX_HINT_LEVEL)
+        state["history"].append(result)
+        return result
+
+    @staticmethod
+    def _leaks(problem, text):
+        """True if a hint gives away the correct option (checked in code, not by the model)."""
+        label = problem["label"]
+        text = text or ""
+        if re.search(rf"\b(?:answer|option|letter|choice)\s*(?:is|:)?\s*\(?{label}\b", text, re.I):
+            return True
+        value = str((problem.get("options") or {}).get(label, "")).strip()
+        # One-character values ("5") appear in almost any hint, so only check longer ones.
+        return len(value) >= 2 and re.search(rf"(?<![\w.]){re.escape(value)}(?![\w.])", text) is not None
+
+    def get_solution(self, key):
+        """Force the solution (level 4)."""
+        problem = self.by_key[key]
+        result = tutor_generate(problem, index=self.index, hint_level=4, timeout=35)
+        state = self._get_or_create_state(key)
+        state["history"].append(result)
+        state["level"] = 4
+        return result
+
+    def adaptive_spaced_next(self, current_level, history, language=None):
+        """Select next problem using spaced repetition weighted sampling."""
+        return select_adaptive_problem(self.problems, current_level, history, language=language)
+
+    def student_reasoning(self, key, reasoning):
+        """Student writes their thinking → correction + counterexamples."""
+        problem = self.by_key[key]
+        state = self._get_or_create_state(key)
+        state["reasoning"] = reasoning
+
+        result = tutor_student_correction(problem, reasoning, index=self.index, timeout=35)
+        state["history"].append(result)
+        return result
+
+    def adaptive_next(self, key, is_correct):
+        """Find the next problem: harder if correct, easier if wrong."""
+        problem = self.by_key[key]
+        next_prob = tutor_adaptive_next(problem, is_correct, self.index)
+        if next_prob:
+            return {
+                "id": next_prob["id"],
+                "level": next_prob["level"],
+                "suggestion": next_prob["text"][:100] + "...",
+            }
+        return {"id": None}
+
+    def get_counterexample(self, key, reasoning):
+        """Find a counterexample from similar problems."""
+        problem = self.by_key[key]
+        counterexamples = find_counterexample(problem, reasoning, self.index, k=3)
+        if counterexamples:
+            _score, p, wrong_letter, wrong_value = counterexamples[0]
+            return {
+                "found": True,
+                "counterexample": {
+                    "id": p["id"],
+                    "score": round(_score, 3),
+                    "text": p["text"][:150],
+                    "wrong_option": wrong_letter,
+                    "wrong_value": wrong_value,
+                    "correct_letter": p["label"],
+                },
+                "detected_errors": detect_typical_errors(reasoning, ""),
+            }
+        return {"found": False, "detected_errors": detect_typical_errors(reasoning, "")}
+
+    def translate(self, key, target_lang):
+        """Translate a problem with the multilingual bridge.
+
+        M3Kang has the same problem id in every language. The validation file
+        holds all the languages of a validation problem, so look there first.
+        The retrieval index only has training problems, so it can't find them.
+        """
+        problem = self.by_key[key]
+        other = self.by_key.get(f"{problem['id']}_{target_lang}")
+        if other:
+            return {
+                "found": True,
+                "id": other["id"],
+                "text": other["text"],
+                "language": other["language"],
+                "level": other["level"],
+            }
+        try:
+            translated = translate_problem(problem, target_lang, self.index)
+        except Exception:  # noqa: BLE001 - fall back to "not found" instead of a 500
+            traceback.print_exc()
+            translated = None
+        if translated:
+            return {
+                "found": True,
+                "id": translated["id"],
+                "text": translated["text"],
+                "language": translated["language"],
+                "level": translated["level"],
+            }
+        return {"found": False}
+
+    def clear_hint(self, key):
+        """Reset the hint state for a problem."""
+        if key in self.hint_state:
+            del self.hint_state[key]
 
     def ask(self, key, rag, vision):
+        """Standard model ask (same as before)."""
         problem = self.by_key[key]
         image = self.image_b64(key) if vision else None
-        result = solve(problem, index=self.index if rag else None, k=rag, exclude_id=problem["id"],
-                       image_b64=image, llm_url=(VISION if vision else LLM) + "/v1/chat/completions",
-                       time_limit=VISION_TIME_LIMIT if vision else float(CONFIG["TIME_LIMIT_SECONDS"]))
+        result = solve(
+            problem,
+            index=self.index if rag else None,
+            k=rag,
+            exclude_id=problem["id"],
+            image_b64=image,
+            llm_url=(VISION if vision else LLM) + "/v1/chat/completions",
+            time_limit=VISION_TIME_LIMIT if vision else float(CONFIG["TIME_LIMIT_SECONDS"]),
+        )
         examples = [p for _score, p in result["examples"]]
         return {
             "answer": result["answer"],
@@ -133,16 +403,22 @@ class App:
             "correct": result["answer"] == problem["label"],
             "label": problem["label"],
             "prompt": printable(build_messages(problem, examples, image)),
-            "examples": [{"score": round(s, 3), **public(p, self.images), "label": p["label"]}
-                         for s, p in result["examples"]],
+            "examples": [
+                {"score": round(s, 3), **public(p, self.images), "label": p["label"]}
+                for s, p in result["examples"]
+            ],
         }
 
     def similar(self, key, k):
+        """Get similar problems (same as before)."""
         if not self.index:
             return []
         problem = self.by_key[key]
         hits = self.index.search(problem, k=k, exclude_id=problem["id"])
-        return [{"score": round(s, 3), **public(p, self.images), "label": p["label"]} for s, p in hits]
+        return [
+            {"score": round(s, 3), **public(p, self.images), "label": p["label"]}
+            for s, p in hits
+        ]
 
 
 def make_handler(app):
@@ -161,39 +437,133 @@ def make_handler(app):
 
         def do_GET(self):
             path, _, query = self.path.partition("?")
-            params = dict(pair.split("=", 1) for pair in query.split("&") if "=" in pair)
-            if path == "/":
-                with open(os.path.join(HERE, "index.html"), "rb") as f:
-                    return self.send(200, f.read(), "text/html; charset=utf-8")
-            if path == "/api/info":
-                return self.send(200, app.info())
-            if path == "/api/problems":
-                return self.send(200, app.listing())
-            if path == "/api/problem" and params.get("key") in app.by_key:
-                return self.send(200, public(app.by_key[params["key"]], app.images))
-            if path == "/api/similar" and params.get("key") in app.by_key:
-                return self.send(200, app.similar(params["key"], int(params.get("k", 3))))
-            if path.startswith("/image/"):
-                key = path[len("/image/"):]
-                # Only known keys reach the disk, so a request can't name any other file
-                file = os.path.join(app.images, key + ".png")
-                if key in app.image_keys and os.path.exists(file):
-                    with open(file, "rb") as f:
-                        return self.send(200, f.read(), "image/png")
+            params = {k: v[0] for k, v in parse_qs(query).items()}
+            try:
+                if path == "/":
+                    with open(os.path.join(HERE, "index.html"), "rb") as f:
+                        return self.send(200, f.read(), "text/html; charset=utf-8")
+                if path == "/api/info":
+                    return self.send(200, app.info())
+                if path == "/api/problems":
+                    return self.send(200, app.listing())
+                if path == "/api/problem" and params.get("key") in app.by_key:
+                    return self.send(200, public(app.by_key[params["key"]], app.images))
+                if path == "/api/similar" and params.get("key") in app.by_key:
+                    return self.send(200, app.similar(params["key"], int(params.get("k", 3))))
+                if path.startswith("/image/"):
+                    key = path[len("/image/"):]
+                    file = os.path.join(app.images, key + ".png")
+                    if key in app.image_keys and os.path.exists(file):
+                        with open(file, "rb") as f:
+                            return self.send(200, f.read(), "image/png")
+            except (OSError, urllib.error.URLError) as error:
+                return self.send(502, {"error": f"model server: {error}"})
+            except Exception as error:  # noqa: BLE001 - show the problem instead of hanging
+                traceback.print_exc()
+                return self.send(500, {"error": f"{type(error).__name__}: {error}"})
             return self.send(404, {"error": "not found"})
 
         def do_POST(self):
-            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            try:
+                body = json.loads(
+                    self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"
+                )
+            except (ValueError, UnicodeDecodeError):
+                return self.send(400, {"error": "invalid JSON"})
+
+            # Adaptive spaced practice does not require a single problem key upfront
+            if self.path == "/api/adaptive/next":
+                try:
+                    current_level = body.get("current_level", 0)
+                    history = body.get("history", {})
+                    language = body.get("language")
+                    res = app.adaptive_spaced_next(current_level, history, language=language)
+                    if res:
+                        return self.send(200, res)
+                    return self.send(404, {"error": "no problems found for adaptive practice"})
+                except Exception as error:
+                    traceback.print_exc()
+                    return self.send(500, {"error": f"{type(error).__name__}: {error}"})
+
             key = body.get("key")
             if key not in app.by_key:
                 return self.send(404, {"error": "unknown problem"})
             try:
+                # Existing endpoints
                 if self.path == "/api/check" and body.get("choice") in list("ABCDE"):
-                    return self.send(200, app.check(key, body["choice"]))
+                    return self.send(200, app.check(key, body["choice"], bool(body.get("reveal", True))))
+                if self.path == "/api/reveal":
+                    return self.send(200, app.reveal(key))
                 if self.path == "/api/ask":
-                    return self.send(200, app.ask(key, int(body.get("rag", 0)), bool(body.get("vision"))))
+                    return self.send(
+                        200,
+                        app.ask(
+                            key,
+                            int(body.get("rag", 0)),
+                            bool(body.get("vision")),
+                        ),
+                    )
+
+                # ── Teaching endpoints ──────────────────────────────
+                if self.path == "/api/socratic":
+                    step = body.get("step", 1)
+                    student_input = body.get("student_input")
+                    try:
+                        return self.send(200, app.socratic_step(key, step, student_input))
+                    except Exception as err:
+                        return self.send(200, {
+                            "status": "fallback",
+                            "step": step,
+                            "type": "socratic",
+                            "text": f"Pas {step}: Identifica les dades clau i reflexiona sobre la relació matemàtica.",
+                            "error": str(err),
+                        })
+
+                if self.path == "/api/trap":
+                    option = body.get("option", "A")
+                    try:
+                        return self.send(200, app.analyze_trap(key, option))
+                    except Exception as err:
+                        return self.send(200, {
+                            "status": "fallback",
+                            "option": option,
+                            "is_correct": False,
+                            "text": f"L'opció {option} és un distractor habitual fruit d'un càlcul intermedi.",
+                            "error": str(err),
+                        })
+
+                if self.path == "/api/hint":
+                    hint_type = body.get("type", None)  # rung 1-3 chosen by the page
+                    return self.send(200, app.get_hint(key, hint_type=hint_type))
+
+                if self.path == "/api/solution":
+                    return self.send(200, app.get_solution(key))
+
+                if self.path == "/api/reasoning":
+                    reasoning = body.get("reasoning", "")
+                    return self.send(200, app.student_reasoning(key, reasoning))
+
+                if self.path == "/api/adaptive":
+                    is_correct = body.get("correct", False)
+                    return self.send(200, app.adaptive_next(key, is_correct))
+
+                if self.path == "/api/counterexample":
+                    reasoning = body.get("reasoning", "")
+                    return self.send(200, app.get_counterexample(key, reasoning))
+
+                if self.path == "/api/translate":
+                    lang = body.get("language", "cat")
+                    return self.send(200, app.translate(key, lang))
+
+                if self.path == "/api/hint-reset":
+                    app.clear_hint(key)
+                    return self.send(200, {"ok": True})
+
             except (OSError, urllib.error.URLError) as error:
                 return self.send(502, {"error": f"model server: {error}"})
+            except Exception as error:  # noqa: BLE001 - show the problem instead of hanging
+                traceback.print_exc()
+                return self.send(500, {"error": f"{type(error).__name__}: {error}"})
             return self.send(400, {"error": "bad request"})
 
     return Handler
@@ -203,11 +573,15 @@ def main():
     args = parse_args()
     app = App(args)
     info = app.info()
-    print(f"{info['count']} problems from {args.input}, {info['images']} with images, "
-          f"{info['index']} in the retrieval index")
-    print(f"Servers: language model {'up' if info['llm'] else 'DOWN'}, "
-          f"embeddings {'up' if info['embed'] else 'DOWN'}, "
-          f"vision {'up' if info['vision'] else 'off'}")
+    print(
+        f"{info['count']} problems from {args.input}, {info['images']} with images, "
+        f"{info['index']} in the retrieval index"
+    )
+    print(
+        f"Servers: language model {'up' if info['llm'] else 'DOWN'}, "
+        f"embeddings {'up' if info['embed'] else 'DOWN'}, "
+        f"vision {'up' if info['vision'] else 'off'}"
+    )
     print(f"Open http://{args.host}:{args.port} (Ctrl+C to stop)", flush=True)
     ThreadingHTTPServer((args.host, args.port), make_handler(app)).serve_forever()
 

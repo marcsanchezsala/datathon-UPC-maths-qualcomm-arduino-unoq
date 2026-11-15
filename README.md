@@ -12,9 +12,22 @@
 
 ---
 
-## 1. What It Does
+## 1. What It Does: A Dual-Track Solution (Reason & Teach)
 
-**Math on the Edge** is an offline, autonomous mathematical reasoning copilot running entirely on the **Arduino UNO Q 4 GB** (powered by the Qualcomm QRB2210 quad-core Arm processor), with zero cloud reliance, zero telemetry, and complete student privacy. Designed for the international Kangaroo Math Competition ([M3Kang](https://huggingface.co/datasets/qualcomm/M3Kang)), the copilot accurately solves competition problems in both **Catalan** and **English**, achieving an absolute champion accuracy of **28.8% (162/562)** across the entire official validation suite and **30.1% (102/339)** on problems with OCR-extracted options. Predictions are rendered in real time directly onto the board's embedded **8x13 LED matrix** via the Arduino Router Bridge with an ultra-fast average response time of **0.6 seconds** (median **0.3 seconds**) and **0 timeouts**.
+The **Math on the Edge** submission fulfills both competition tracks of the Datathon FME 2026 Qualcomm challenge directly on the **Arduino UNO Q 4 GB** (Qualcomm QRB2210 quad-core Arm CPU):
+
+1. **Track 1 — Reason (Champion Competition Solver):**
+   - Offline, autonomous mathematical problem solver for the international Kangaroo Math Competition ([M3Kang](https://huggingface.co/datasets/qualcomm/M3Kang)).
+   - Solves competition problems in **Catalan** and **English**, achieving **28.8% (162/562)** overall validation accuracy, **30.1% (102/339)** on OCR options problems, and **32.0%** in real-time execution on the physical board with **0 timeouts**.
+   - Answers are rendered in real time onto the board's embedded **8x13 LED matrix** via the Arduino Router Bridge.
+   - Run via: `python3 predict.py --input data/val.jsonl --output results/predictions.jsonl`
+
+2. **Track 2 — Teach (Socratic Teaching Copilot & Edge Companion):**
+   - Interactive learning companion designed for classrooms without cloud connectivity.
+   - **4-Rung Socratic Hint Ladder:** progressive hints that guide student discovery without spoiling the answer.
+   - **Distractor & Misconception Analysis:** detects common student pitfalls (off-by-one, sign errors, perimeter vs area) and explains *why* a chosen distractor is a trap.
+   - **Adaptive Spaced Repetition Practice:** dynamically adjusts question difficulty based on student confidence and accuracy.
+   - Run via: `python3 explorer/server.py --input data/val.jsonl --index data/index.db --images data/images` (access at `http://127.0.0.1:8000`).
 
 ---
 
