@@ -197,16 +197,17 @@ def tutor_messages(problem, hint_level=3, student_reasoning=None):
     return [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]
 
 
-def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, timeout=120):
+def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, timeout=35):
     """Generate a teaching response for the given hint level.
 
     hint_level:
       1 = RAG example (similar problem, instant)
       2 = Method hint (LLM, fast, short)
       3 = Model hint (LLM, short)
-      4 = Full solution (LLM, longer)
+      4 = Full solution (LLM, max 180 tokens)
       5 = Student reasoning correction (LLM, short)
     """
+    timeout = min(timeout, 40)
     # Level 1: RAG pure, no LLM call (instant, <0.5s)
     if hint_level == 1 and index:
         examples = find_rag_examples(problem, index, k=2)
@@ -225,7 +226,7 @@ def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, ti
 
     messages = tutor_messages(problem, hint_level, student_reasoning)
 
-    # Optimization: short responses for hints to avoid long waits
+    # Optimization: short responses for hints to avoid long waits (<60 tokens, solution <=180)
     if hint_level <= 3:
         payload = {
             "messages": messages,
@@ -242,10 +243,10 @@ def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, ti
             "seed": int(CONFIG["SEED"]),
             "cache_prompt": True,
         }
-    else:  # Level 4: solution
+    else:  # Level 4: solution (constrained to 180 tokens for edge latency)
         payload = {
             "messages": messages,
-            "max_tokens": 250,
+            "max_tokens": 180,
             "temperature": 0,
             "seed": int(CONFIG["SEED"]),
             "cache_prompt": True,
@@ -265,12 +266,13 @@ def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, ti
         return {"text": f"Error generating response: {e}", "type": "error", "level": hint_level}
 
 
-def tutor_student_correction(problem, student_reasoning, index=None, timeout=120):
+def tutor_student_correction(problem, student_reasoning, index=None, timeout=35):
     """Special endpoint for student reasoning correction.
 
     Finds a counterexample from training data where the student's mistake
     would lead to a wrong answer in the similar problem.
     """
+    timeout = min(timeout, 40)
     # 1. Detect typical errors (instant, no LLM)
     detected_errors = detect_typical_errors(student_reasoning, "")
 
@@ -305,7 +307,7 @@ def tutor_student_correction(problem, student_reasoning, index=None, timeout=120
     messages = tutor_messages(problem, 5, student_reasoning)
     payload = {
         "messages": messages,
-        "max_tokens": 80,
+        "max_tokens": 60,
         "temperature": 0,
         "seed": int(CONFIG["SEED"]),
         "cache_prompt": True,
@@ -358,3 +360,222 @@ def tutor_adaptive_next(current_problem, is_correct, index=None):
                 return {"id": p["id"], "level": p["level"], "text": p["text"]}
 
     return None
+
+
+# ── Interactive Socratic Tutor & Trap Detector (Edge Optimized) ──────────
+
+SOCRATIC_STEP_PROMPTS = {
+    1: (
+        "You are a Socratic math tutor. Ask ONE concise guiding question (max 25 words) "
+        "to help the student understand the problem: identify what data is given and what exactly "
+        "is being asked. Do NOT solve it or reveal the answer."
+    ),
+    2: (
+        "You are a Socratic math tutor. Ask ONE concise guiding question (max 25 words) "
+        "to guide the student's strategy: what mathematical operation, formula, or rule "
+        "connects the known data to what needs to be found. Do NOT reveal the answer."
+    ),
+    3: (
+        "You are a Socratic math tutor. Ask ONE concise guiding question (max 25 words) "
+        "to guide the student's final calculation or verification: how to compute accurately "
+        "and check boundary/edge conditions. Do NOT reveal the answer."
+    ),
+}
+
+SOCRATIC_DEFAULT_FALLBACKS = {
+    1: "Quines dades clau et dóna l'enunciat i què et demana trobar exactament?",
+    2: "Quina regla, operació o propietat matemàtica connecta les dades que tens amb el que busques?",
+    3: "Fes el càlcul pas a pas: coincideix el teu resultat amb alguna opció? Has revisat els casos límit?",
+}
+
+
+def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout=35):
+    """Generate a 3-step Socratic guiding question adapted to edge constraints (<35s, <=50 tokens).
+
+    step:
+      1 = Understanding given data and goal
+      2 = Strategy and mathematical modeling
+      3 = Calculation and edge condition verification
+    """
+    try:
+        step = int(step)
+    except (TypeError, ValueError):
+        step = 1
+    step = max(1, min(step, 3))
+    timeout = min(timeout, 35)
+
+    default_msg = SOCRATIC_DEFAULT_FALLBACKS.get(step, SOCRATIC_DEFAULT_FALLBACKS[1])
+    problem_text = _build_problem_text(problem)
+    system_prompt = SOCRATIC_STEP_PROMPTS.get(step, SOCRATIC_STEP_PROMPTS[1])
+    user_prompt = f"Problem:\n{problem_text}\n"
+    if student_input:
+        user_prompt += f"Student's response so far: {student_input}\n"
+    user_prompt += f"Provide the Step {step} guiding question (max 25 words)."
+
+    payload = {
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "max_tokens": 50,
+        "temperature": 0,
+        "seed": int(CONFIG["SEED"]),
+        "cache_prompt": True,
+    }
+
+    try:
+        response = post(TUTOR_URL, payload, timeout=timeout)
+        text = response["choices"][0]["message"]["content"].strip()
+        return {
+            "text": text,
+            "step": step,
+            "type": "socratic",
+            "status": "ok",
+            "prompt_tokens": response.get("timings", {}).get("prompt_n", 0),
+            "timings": response.get("timings", {}),
+        }
+    except Exception:
+        # Immediate fallback to RAG example if index is available
+        if index:
+            try:
+                examples = find_rag_examples(problem, index, k=1)
+                if examples:
+                    _score, p = examples[0]
+                    sim_text = p.get("text", "").strip()
+                    return {
+                        "text": f"Exemple similar del RAG index per guiar-te:\n\"{sim_text}\"\n\nPregunta guia pas {step}: {default_msg}",
+                        "step": step,
+                        "type": "socratic",
+                        "status": "fallback",
+                        "rag_fallback": True,
+                    }
+            except Exception:
+                pass
+        return {
+            "text": default_msg,
+            "step": step,
+            "type": "socratic",
+            "status": "fallback",
+        }
+
+
+def tutor_analyze_trap(problem, option_letter, index=None, timeout=35):
+    """Analyze why an option is an attractive distractor (Trap Detection).
+
+    Checks deterministic heuristic rules first (instant, 0s).
+    Falls back to LLM (<35s, max 50 tokens) or default distractor reasoning.
+    """
+    option_letter = str(option_letter).upper().strip()
+    correct_label = str(problem.get("label", "")).upper().strip()
+    options = problem.get("options") or {}
+    opt_val_str = str(options.get(option_letter, "")).strip()
+    correct_val_str = str(options.get(correct_label, "")).strip()
+
+    # 1. Correct option check
+    if option_letter == correct_label:
+        return {
+            "option": option_letter,
+            "is_correct": True,
+            "text": f"L'opció {option_letter} ({opt_val_str or 'correcta'}) és la resposta correcta! Molt bona feina.",
+            "status": "ok",
+        }
+
+    # Heuristics: extract numeric values
+    def _parse_num(s):
+        if not s:
+            return None
+        m = NUMBER_RE.search(s)
+        if m:
+            try:
+                return float(m.group())
+            except ValueError:
+                return None
+        return None
+
+    val_opt = _parse_num(opt_val_str)
+    val_correct = _parse_num(correct_val_str)
+
+    # Rule 1: Off-by-one difference == 1 or -1
+    if val_opt is not None and val_correct is not None and abs(val_opt - val_correct) == 1:
+        return {
+            "option": option_letter,
+            "is_correct": False,
+            "text": "Trampa d'error per 1 (off-by-one): molt a prop! Has comptat un extrem de més o de menys?",
+            "rule": "off_by_one",
+            "status": "heuristic",
+        }
+
+    # Rule 2: Double or half
+    if val_opt is not None and val_correct is not None and val_correct != 0 and val_opt != 0:
+        if abs(val_opt - val_correct * 2) < 1e-5 or abs(val_opt - val_correct / 2) < 1e-5:
+            return {
+                "option": option_letter,
+                "is_correct": False,
+                "text": "Trampa de doble/meitat: has multiplicat o dividit per 2 quan no tocava?",
+                "rule": "double_or_half",
+                "status": "heuristic",
+            }
+
+    # Rule 3: Typical problems like snail/pattern boundary condition
+    prob_text_lower = (problem.get("text", "") + " " + problem.get("id", "")).lower()
+    is_snail = any(w in prob_text_lower for w in ["cargol", "caracol", "snail", "wall", "paret", "pared"])
+    is_pattern = any(w in prob_text_lower for w in ["patró", "patron", "pattern"])
+    if is_snail or is_pattern:
+        return {
+            "option": option_letter,
+            "is_correct": False,
+            "text": "Trampa de condició límit: revisa si el darrer pas canvia la condició.",
+            "rule": "boundary_condition",
+            "status": "heuristic",
+        }
+
+    # If no heuristic activates, call LLM with ultra-concise prompt
+    timeout = min(timeout, 35)
+    clean_text = problem.get("text", "").strip()
+    val_repr = opt_val_str if opt_val_str else option_letter
+    prompt_text = (
+        f"The math problem is {clean_text}. "
+        f"Option {option_letter} is {val_repr}. "
+        f"The correct answer is {correct_label}. "
+        f"In ONE concise sentence (max 25 words), explain what typical misconception or miscalculation makes a student choose {val_repr}. "
+        f"Do NOT reveal the correct letter."
+    )
+
+    payload = {
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a math educator diagnosing student distractors. "
+                    "In ONE concise sentence (max 25 words), explain why a student would pick the specified wrong option. "
+                    "Do NOT reveal the correct option letter."
+                ),
+            },
+            {"role": "user", "content": prompt_text},
+        ],
+        "max_tokens": 50,
+        "temperature": 0,
+        "seed": int(CONFIG["SEED"]),
+        "cache_prompt": True,
+    }
+
+    try:
+        response = post(TUTOR_URL, payload, timeout=timeout)
+        analysis = response["choices"][0]["message"]["content"].strip()
+        return {
+            "option": option_letter,
+            "is_correct": False,
+            "text": analysis,
+            "status": "ok",
+            "prompt_tokens": response.get("timings", {}).get("prompt_n", 0),
+            "timings": response.get("timings", {}),
+        }
+    except Exception:
+        # Fallback to useful default message without failing
+        val_disp = f" ({opt_val_str})" if opt_val_str else ""
+        return {
+            "option": option_letter,
+            "is_correct": False,
+            "text": f"L'opció {option_letter}{val_disp} és un distractor habitual que sol derivar d'un càlcul intermedi o d'una lectura ràpida de les dades.",
+            "status": "fallback",
+        }

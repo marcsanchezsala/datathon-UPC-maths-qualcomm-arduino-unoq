@@ -65,6 +65,17 @@
   .counter-box { background: #fce8e6; border: 1px solid #b3261e; border-radius: 6px; padding: 8px 12px; margin-top: 8px; font-size: 13px; }
   .error-tag { background: #fff3cd; color: #856404; border: 1px solid #ffc107; border-radius: 3px; padding: 2px 6px; font-size: 12px; display: inline-block; margin: 2px 2px; }
   kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 12px; background: #fff; }
+  .step-btn { padding: 6px 14px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .step-btn:hover { border-color: var(--accent); }
+  .step-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .trap-btn { width: 56px; height: 44px; font-size: 18px; font-weight: 700; border: 2px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; }
+  .trap-btn:hover { border-color: var(--accent); }
+  .trap-btn.active { outline: 3px solid var(--accent); outline-offset: 1px; }
+  .trap-btn.is-correct { border-color: var(--ok); color: var(--ok); background: var(--ok-bg); }
+  .trap-btn.is-distractor { border-color: #d97706; color: #b45309; background: #fffbeb; }
+  .edge-time { font-size: 12px; font-weight: 600; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
+  .badge-fallback { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+  .badge-fast { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: var(--ok-bg); color: var(--ok); }
   @media (max-width: 800px) { main { grid-template-columns: 1fr; } aside { position: static; height: 300px; } }
 </style>
 </head>
@@ -102,7 +113,61 @@
     </section>
 
     <section>
-      <h2>2. Ask the model</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h2 style="margin:0">2. Tutor Socràtic (3 passos guiats)</h2>
+        <span id="soc-timer" class="edge-time"></span>
+      </div>
+      <p class="hint" style="margin:0 0 10px;">Guia pas a pas per descobrir la solució sense revelar la resposta (&lt;35s).</p>
+      <div class="row" style="margin-bottom:10px;gap:8px;">
+        <button class="step-btn active" id="soc-b1" data-step="1">Pas 1: Entendre</button>
+        <button class="step-btn" id="soc-b2" data-step="2">Pas 2: Estratègia</button>
+        <button class="step-btn" id="soc-b3" data-step="3">Pas 3: Càlcul</button>
+      </div>
+      <div class="row" style="margin-bottom:8px;">
+        <input type="text" id="soc-input" placeholder="La teva reflexió o resposta (opcional)..." style="flex:1;min-width:240px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff;">
+        <button class="primary" id="soc-ask-btn">Demanar guia</button>
+      </div>
+      <div id="soc-result"></div>
+    </section>
+
+    <section>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h2 style="margin:0">3. Detector de Trampes i Opcions Falses</h2>
+        <span id="trap-timer" class="edge-time"></span>
+      </div>
+      <p class="hint" style="margin:0 0 10px;">Descobreix per què cada opció falsa és una trampa atractiva (distractor analysis).</p>
+      <div class="letters" id="trap-options">
+        <button class="trap-btn" data-t="A">A</button>
+        <button class="trap-btn" data-t="B">B</button>
+        <button class="trap-btn" data-t="C">C</button>
+        <button class="trap-btn" data-t="D">D</button>
+        <button class="trap-btn" data-t="E">E</button>
+      </div>
+      <div id="trap-result"></div>
+    </section>
+
+    <section>
+      <h2>4. Get a hint (teaching mode)</h2>
+      <div class="row" style="margin-bottom:6px">
+        <button class="primary" id="get-hint">Get hint</button>
+        <button class="primary" id="show-solution" style="background:var(--bad)" disabled>Show solution</button>
+        <button class="secondary" id="reset-hints" style="font-size:12px">Reset</button>
+        <span class="hint" id="hint-status">Click "Get hint" for the first hint.</span>
+      </div>
+      <div id="hint-history"></div>
+    </section>
+
+    <section>
+      <h2>5. Check your reasoning</h2>
+      <div class="row">
+        <textarea id="reasoning-input" rows="3" placeholder="Explain your steps (Ctrl+Enter to check)" style="flex:1;min-width:240px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;font:inherit;background:#fff;resize:vertical;"></textarea>
+        <button class="secondary" id="reasoning-check">Check</button>
+      </div>
+      <div id="reasoning-result"></div>
+    </section>
+
+    <section>
+      <h2>6. Ask the model</h2>
       <div class="row">
         <label>Solved examples (RAG)
           <select id="rag"><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
@@ -114,27 +179,7 @@
     </section>
 
     <section>
-      <h2>2b. Get a hint (teaching mode)</h2>
-      <div class="row" style="margin-bottom:6px">
-        <button class="primary" id="get-hint">Get hint</button>
-        <button class="primary" id="show-solution" style="background:var(--bad)" disabled>Show solution</button>
-        <button class="secondary" id="reset-hints" style="font-size:12px">Reset</button>
-        <span class="hint" id="hint-status">Click "Get hint" for the first hint.</span>
-      </div>
-      <div id="hint-history"></div>
-    </section>
-
-    <section>
-      <h2>2c. Check your reasoning</h2>
-      <div class="row">
-        <textarea id="reasoning-input" rows="3" placeholder="Explain your steps (Ctrl+Enter to check)" style="flex:1;min-width:240px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;font:inherit;background:#fff;resize:vertical;"></textarea>
-        <button class="secondary" id="reasoning-check">Check</button>
-      </div>
-      <div id="reasoning-result"></div>
-    </section>
-
-    <section>
-      <h2>2d. Translate</h2>
+      <h2>7. Translate</h2>
       <div class="row">
         <select id="trans-lang" style="padding:4px 6px;border:1px solid var(--line);border-radius:4px;font:inherit;background:#fff;"></select>
         <button class="secondary" id="trans-btn">Translate</button>
@@ -143,7 +188,7 @@
     </section>
 
     <section>
-      <h2>3. Similar solved problems (embeddings)</h2>
+      <h2>8. Similar solved problems (embeddings)</h2>
       <div class="hint" id="sim-hint"></div>
       <div class="similar" id="similar"></div>
     </section>
@@ -205,6 +250,14 @@ async function open(key) {
   $("reasoning-check").disabled = false;
   $("trans-result").innerHTML = ""; $("trans-btn").disabled = false;
   $("model").innerHTML = ""; $("asking").textContent = "";
+  selectSocStep(1);
+  $("soc-input").value = ""; $("soc-result").innerHTML = ""; $("soc-timer").innerHTML = "";
+  $("trap-result").innerHTML = ""; $("trap-timer").innerHTML = "";
+  document.querySelectorAll("#trap-options button").forEach(b => {
+    b.className = "trap-btn";
+    const l = b.dataset.t;
+    b.title = o[l] ? `${l}) ${o[l]}` : l;
+  });
   renderHints();
   syncHintUI();
   renderList();
@@ -299,6 +352,113 @@ function nextStep(r) {
   if (!r.correct && !r.examples.length && info.index) return "try again with 1 to 3 solved examples (RAG) and compare.";
   if (!r.correct) return "open the prompt below and ask yourself what the model is missing. Then change copilot/llm.py and measure with eval.py.";
   return "one right answer can be luck. Run eval.py on the whole validation set to see if a change really helps.";
+}
+
+// ── Teaching: Socratic Tutor & Trap Detector (Edge Optimized) ──────────
+
+let currentSocStep = 1;
+
+function selectSocStep(step) {
+  currentSocStep = step;
+  [1, 2, 3].forEach(s => {
+    const btn = $(`soc-b${s}`);
+    if (btn) btn.classList.toggle("active", s === step);
+  });
+}
+
+async function askSocratic(step = null) {
+  if (!current) return;
+  if (step !== null) selectSocStep(step);
+  const s = currentSocStep;
+  const key = current.key;
+  const studentInput = $("soc-input").value.trim();
+  const btn = $("soc-ask-btn");
+  btn.disabled = true;
+  $("soc-timer").innerHTML = `<span class="hint">⚡ Demanant pas ${s}…</span>`;
+  const t0 = performance.now();
+  try {
+    const r = await api("/api/socratic", { key, step: s, student_input: studentInput });
+    if (!current || current.key !== key) return;
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+    let tag = `<span class="edge-time">⚡ ${elapsed}s</span>`;
+    if (r.cached) {
+      tag += ` <span class="badge-fast">cache</span>`;
+    } else if (r.status === "fallback" || r.rag_fallback) {
+      tag += ` <span class="badge-fallback">⚠️ Fallback RAG</span>`;
+    }
+    $("soc-timer").innerHTML = tag;
+
+    const stepTitles = {
+      1: "Pas 1: Entendre les dades i l'objectiu",
+      2: "Pas 2: Estratègia i modelització matemàtica",
+      3: "Pas 3: Càlcul i comprovació de casos límit",
+    };
+    $("soc-result").innerHTML = `
+      <div class="hint-box" style="border-left: 4px solid var(--accent); margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div>
+            <span class="level-badge">${s}</span>
+            <span class="rung">${esc(stepTitles[s] || "Guia Socràtica")}</span>
+          </div>
+        </div>
+        <div style="font-size:14px;line-height:1.5;">${esc(r.text)}</div>
+      </div>
+    `;
+  } catch (err) {
+    $("soc-timer").innerHTML = `<span style="color:var(--bad)">Error</span>`;
+    $("soc-result").innerHTML = `<div class="hint-box error-box"><b>Error:</b> ${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function inspectTrap(option) {
+  if (!current) return;
+  const key = current.key;
+  document.querySelectorAll("#trap-options button").forEach(b => {
+    b.classList.toggle("active", b.dataset.t === option);
+  });
+  $("trap-timer").innerHTML = `<span class="hint">⚡ Analitzant opció ${option}…</span>`;
+  const t0 = performance.now();
+  try {
+    const r = await api("/api/trap", { key, option });
+    if (!current || current.key !== key) return;
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+    let tag = `<span class="edge-time">⚡ ${elapsed}s</span>`;
+    if (r.rule || r.status === "heuristic") {
+      tag += ` <span class="badge-fast">⚡ Heurística</span>`;
+    } else if (r.cached) {
+      tag += ` <span class="badge-fast">cache</span>`;
+    } else if (r.status === "fallback") {
+      tag += ` <span class="badge-fallback">⚠️ Fallback</span>`;
+    }
+    $("trap-timer").innerHTML = tag;
+
+    const btn = document.querySelector(`#trap-options button[data-t="${option}"]`);
+    if (btn) {
+      if (r.is_correct) {
+        btn.classList.add("is-correct");
+      } else {
+        btn.classList.add("is-distractor");
+      }
+    }
+
+    const boxBorder = r.is_correct ? "var(--ok)" : "#d97706";
+    const boxBg = r.is_correct ? "var(--ok-bg)" : "#fffbeb";
+    $("trap-result").innerHTML = `
+      <div class="hint-box" style="border-left: 4px solid ${boxBorder}; background: ${boxBg}; margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <b style="color:${r.is_correct ? "var(--ok)" : "#b45309"}">
+            ${r.is_correct ? "✓ Opció Correcta" : "⚠️ Anàlisi del Distractor / Trampa"} (Opció ${esc(option)})
+          </b>
+        </div>
+        <div style="font-size:14px;line-height:1.5;">${esc(r.text)}</div>
+      </div>
+    `;
+  } catch (err) {
+    $("trap-timer").innerHTML = `<span style="color:var(--bad)">Error</span>`;
+    $("trap-result").innerHTML = `<div class="hint-box error-box"><b>Error:</b> ${esc(err.message)}</div>`;
+  }
 }
 
 // ── Teaching: hint ladder ──────────────────────────────────────────────
@@ -491,6 +651,12 @@ async function main() {
 
 $("list").addEventListener("click", e => { const d = e.target.closest("div[data-key]"); if (d) open(d.dataset.key); });
 $("mine").addEventListener("click", e => { if (e.target.dataset.l) answer(e.target.dataset.l); });
+$("soc-b1").addEventListener("click", () => { selectSocStep(1); askSocratic(); });
+$("soc-b2").addEventListener("click", () => { selectSocStep(2); askSocratic(); });
+$("soc-b3").addEventListener("click", () => { selectSocStep(3); askSocratic(); });
+$("soc-ask-btn").addEventListener("click", () => askSocratic());
+$("soc-input").addEventListener("keydown", e => { if (e.key === "Enter") askSocratic(); });
+$("trap-options").addEventListener("click", e => { if (e.target.dataset.t) inspectTrap(e.target.dataset.t); });
 ["f-lang", "f-level", "f-options"].forEach(id => $(id).addEventListener("change", renderList));
 $("ask").addEventListener("click", ask);
 $("get-hint").addEventListener("click", getHint);

@@ -181,6 +181,89 @@ class MockHandler(BaseHTTPRequestHandler):
             reveal = bool(body.get("reveal", True))
             return self.send_json({"correct": correct, "label": p["label"] if (correct or reveal) else None})
 
+        if path == "/api/socratic":
+            try:
+                step = max(1, min(int(body.get("step", 1)), 3))
+            except (TypeError, ValueError):
+                step = 1
+
+            socratic_qa = {
+                "lvl-0_2015_14": {
+                    1: "Quants cubs petits formen el cub gran en total (27), i de quin color són els 8 vèrtexs?",
+                    2: "Com que dos cubs del mateix color mai no comparteixen cara, quin patró té cada capa 3x3 (escacat)?",
+                    3: "Compta capa per capa: quants cubs blancs hi ha a la capa 1, a la capa 2 (central) i a la capa 3?",
+                },
+                "lvl-1_2016_20": {
+                    1: "Quina és l'alçada total de la paret (10 m), i quants metres puja de dia i rellisca de nit?",
+                    2: "Quin és el guany net d'alçada per cada cicle complet de 24 hores (dia + nit)?",
+                    3: "El darrer dia, un cop arriba als 10 m durant el dia, cal que rellisqui de nit?",
+                },
+                "lvl-2_2017_19": {
+                    1: "Quines són les bases i els exponents de l'expressió 2^10 × 5^8?",
+                    2: "Pots agrupar potències de 2 i de 5 per formar potències de 10? Quants parells (2×5) pots fer?",
+                    3: "Quin és el factor restant multiplicat per 10^8, i quina és la suma de les seves xifres?",
+                },
+            }
+            prob_steps = socratic_qa.get(pid, {})
+            text = prob_steps.get(step, f"Pas {step}: Analitza les dades del problema i reflexiona sobre el mètode.")
+            return self.send_json({
+                "status": "ok",
+                "step": step,
+                "type": "socratic",
+                "text": text,
+                "prompt_tokens": 25,
+                "timings": {"prompt_n": 25},
+            })
+
+        if path == "/api/trap":
+            option = str(body.get("option", "A")).upper().strip()
+            opt_val = p["options"].get(option, option)
+            if option == p["label"]:
+                return self.send_json({
+                    "status": "ok",
+                    "option": option,
+                    "is_correct": True,
+                    "text": f"L'opció {option} ({opt_val}) és la resposta correcta! Molt bona feina.",
+                })
+
+            trap_explanations = {
+                "lvl-0_2015_14": {
+                    "A": "L'opció A (10) oblida comptar els cubs blancs centrals de les capes exteriors.",
+                    "B": "Trampa d'error per 1 (off-by-one): molt a prop (12)! Has comptat un cub blanc de menys a la capa central.",
+                    "D": "Trampa d'error per 1 (off-by-one): molt a prop (14)! Has comptat un cub negre com a blanc.",
+                    "E": "L'opció E (15) assumeix incorrectament que hi ha més blancs que negres, ignorant que els 8 vèrtexs són negres.",
+                },
+                "lvl-1_2016_20": {
+                    "A": "Trampa d'error per 1 (off-by-one): al dia 7 el cargol només és a 7 m abans de l'escalada diària.",
+                    "C": "Trampa d'error per 1 (off-by-one): molt a prop, però el dia 8 ja ha assolit el capdamunt.",
+                    "D": "Trampa de condició límit: calcula 10 / 1 = 10 dies, oblidant que el darrer dia puja 3 m i arriba al cim abans de caure.",
+                    "E": "Trampa d'excés: suma passos addicionals sense tenir en compte el progrés diari net.",
+                },
+                "lvl-2_2017_19": {
+                    "B": "Trampa de base: agafar només la base 2 sense considerar el factor 2^2 = 4.",
+                    "C": "Trampa de doble: has calculat 4 × 2 o confós la suma d'exponents.",
+                    "D": "Trampa de base 10: has agafat la base 10 de (2×5) com a suma de dígits.",
+                    "E": "Trampa de dígits: has sumat els exponents 10 + 8 = 18 o xifres intermèdies.",
+                },
+            }
+            prob_traps = trap_explanations.get(pid, {})
+            correct_val = p["options"].get(p["label"], "")
+            try:
+                diff = abs(float(opt_val) - float(correct_val))
+                if diff == 1:
+                    trap_text = "Trampa d'error per 1 (off-by-one): molt a prop! Has comptat un extrem de més o de menys?"
+                else:
+                    trap_text = prob_traps.get(option, f"L'opció {option} ({opt_val}) és un distractor comú fruit d'un càlcul intermedi.")
+            except (ValueError, TypeError):
+                trap_text = prob_traps.get(option, f"L'opció {option} ({opt_val}) és un distractor comú fruit d'un càlcul intermedi.")
+
+            return self.send_json({
+                "status": "ok",
+                "option": option,
+                "is_correct": False,
+                "text": trap_text,
+            })
+
         if path == "/api/reveal":
             return self.send_json({"label": p["label"]})
 

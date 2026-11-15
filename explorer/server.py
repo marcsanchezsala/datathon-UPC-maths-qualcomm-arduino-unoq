@@ -28,6 +28,8 @@ from copilot.tutor import (  # noqa: E402
     tutor_generate,
     tutor_student_correction,
     tutor_adaptive_next,
+    tutor_socratic_step,
+    tutor_analyze_trap,
     find_rag_examples,
     find_counterexample,
     detect_typical_errors,
@@ -105,6 +107,8 @@ class App:
         self.hint_state = {}  # key -> {level, history, reasoning, ...}
         self.student_profile = {}  # key -> {correct, wrong, level}
         self.hint_cache = {}  # (key, level) -> hint, so a repeated click does not cost 10-30 s
+        self.socratic_cache = {}  # (key, step, student_input) -> response (bounded)
+        self.trap_cache = {}  # (key, option) -> response (bounded)
         # Images the page may ask for
         self.image_keys = set(self.by_key)
         if self.index:
@@ -173,6 +177,73 @@ class App:
             }
         return self.hint_state[key]
 
+    def _cache_put(self, cache, key, value, max_size=128):
+        """Keep caches bounded to protect the 4GB RAM budget on Arduino UNO Q."""
+        if len(cache) >= max_size:
+            try:
+                oldest = next(iter(cache))
+                del cache[oldest]
+            except (StopIteration, KeyError):
+                pass
+        cache[key] = value
+
+    # ── Teaching: Socratic Tutor & Trap Detector (Edge Optimized) ───────
+
+    def socratic_step(self, key, step, student_input=None):
+        """Generate a 3-step Socratic guiding question with caching and fallback."""
+        problem = self.by_key[key]
+        try:
+            step = int(step)
+        except (TypeError, ValueError):
+            step = 1
+        step = max(1, min(step, 3))
+        clean_input = (student_input or "").strip()
+        cache_key = (key, step, clean_input)
+        if cache_key in self.socratic_cache:
+            res = dict(self.socratic_cache[cache_key])
+            res["cached"] = True
+            return res
+
+        try:
+            result = tutor_socratic_step(
+                problem, step=step, student_input=clean_input, index=self.index, timeout=35
+            )
+        except Exception as e:
+            result = {
+                "text": f"Pas {step}: Identifica les dades de l'enunciat i planteja el camí de resolució.",
+                "step": step,
+                "type": "socratic",
+                "status": "fallback",
+                "error": str(e),
+            }
+        self._cache_put(self.socratic_cache, cache_key, result)
+        return result
+
+    def analyze_trap(self, key, option):
+        """Analyze why an option is an attractive distractor (Trap Detection)."""
+        problem = self.by_key[key]
+        option = str(option).upper().strip()
+        cache_key = (key, option)
+        if cache_key in self.trap_cache:
+            res = dict(self.trap_cache[cache_key])
+            res["cached"] = True
+            return res
+
+        try:
+            result = tutor_analyze_trap(
+                problem, option_letter=option, index=self.index, timeout=35
+            )
+        except Exception as e:
+            result = {
+                "option": option,
+                "is_correct": False,
+                "text": f"L'opció {option} és un distractor habitual fruit d'un error de càlcul o lectura.",
+                "status": "fallback",
+                "error": str(e),
+            }
+        self._cache_put(self.trap_cache, cache_key, result)
+        return result
+
     # ── Teaching: hint ladder (3 hints, then the solution on request) ────
 
     def get_hint(self, key, hint_type=None):
@@ -192,7 +263,7 @@ class App:
         if cached:
             state["level"] = min(level + 1, MAX_HINT_LEVEL)
             return cached
-        result = tutor_generate(problem, index=self.index, hint_level=level, timeout=120)
+        result = tutor_generate(problem, index=self.index, hint_level=level, timeout=35)
         if self._leaks(problem, result.get("text", "")):
             result = {
                 "type": "hint", "level": level, "withheld": True,
@@ -219,7 +290,7 @@ class App:
     def get_solution(self, key):
         """Force the solution (level 4)."""
         problem = self.by_key[key]
-        result = tutor_generate(problem, index=self.index, hint_level=4, timeout=120)
+        result = tutor_generate(problem, index=self.index, hint_level=4, timeout=40)
         state = self._get_or_create_state(key)
         state["history"].append(result)
         state["level"] = 4
@@ -231,7 +302,7 @@ class App:
         state = self._get_or_create_state(key)
         state["reasoning"] = reasoning
 
-        result = tutor_student_correction(problem, reasoning, index=self.index, timeout=120)
+        result = tutor_student_correction(problem, reasoning, index=self.index, timeout=35)
         state["history"].append(result)
         return result
 
@@ -413,6 +484,33 @@ def make_handler(app):
                     )
 
                 # ── Teaching endpoints ──────────────────────────────
+                if self.path == "/api/socratic":
+                    step = body.get("step", 1)
+                    student_input = body.get("student_input")
+                    try:
+                        return self.send(200, app.socratic_step(key, step, student_input))
+                    except Exception as err:
+                        return self.send(200, {
+                            "status": "fallback",
+                            "step": step,
+                            "type": "socratic",
+                            "text": f"Pas {step}: Identifica les dades clau i reflexiona sobre la relació matemàtica.",
+                            "error": str(err),
+                        })
+
+                if self.path == "/api/trap":
+                    option = body.get("option", "A")
+                    try:
+                        return self.send(200, app.analyze_trap(key, option))
+                    except Exception as err:
+                        return self.send(200, {
+                            "status": "fallback",
+                            "option": option,
+                            "is_correct": False,
+                            "text": f"L'opció {option} és un distractor habitual fruit d'un càlcul intermedi.",
+                            "error": str(err),
+                        })
+
                 if self.path == "/api/hint":
                     hint_type = body.get("type", None)  # rung 1-3 chosen by the page
                     return self.send(200, app.get_hint(key, hint_type=hint_type))
