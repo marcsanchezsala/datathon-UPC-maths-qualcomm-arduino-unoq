@@ -20,7 +20,7 @@ L'Arduino UNO Q combina dos entorns de computació en una única placa:
 |  |                                                                    |  |
 |  |  +----------------------+  +------------------------+              |  |
 |  |  | math-embed.service   |  | math-llm.service       |              |  |
-|  |  | (bge-small-en-v1.5)  |  | (Qwen3.5-0.8B Q8_0)    |              |  |
+|  |  | (bge-small-en-v1.5)  |  | (Qwen3.5-0.8B-aqua)    |              |  |
 |  |  | port: 8082           |  | port: 8081             |              |  |
 |  |  +----------^-----------+  +-----------^------------+              |  |
 |  |             | HTTP (127.0.0.1)         | HTTP (127.0.0.1)          |  |
@@ -76,7 +76,7 @@ adb push build_index.py /home/arduino/datathon-teaching/
 ## 3. Verificació dels Serveis d'Inferència Locals
 
 El Teaching Copilot requereix dos serveis `systemd` que allotgen els models en memòria mitjançant `llama-server`:
-1. `math-llm.service` (Port 8081): **Qwen3.5 0.8B Q8_0** (generador de raonament Micro-CoT, pistes socràtiques i anàlisi de trampes).
+1. `math-llm.service` (Port 8081): **Qwen3.5-0.8B-aqua-reason Q8_0** (model finetunejat amb AQuA per a raonament socràtic pas a pas, pistes i anàlisi de trampes).
 2. `math-embed.service` (Port 8082): **bge-small-en-v1.5 Q8_0** (generació d'embeddings per a la cerca semàntica RAG).
 
 Comprova l'estat dels serveis a la placa:

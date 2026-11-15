@@ -384,7 +384,8 @@ def tutor_generate(problem, index=None, hint_level=3, student_reasoning=None, ti
 
     try:
         response = post(TUTOR_URL, payload, timeout=timeout)
-        text = response["choices"][0]["message"]["content"].strip()
+        msg = response["choices"][0]["message"]
+        text = (msg.get("content") or msg.get("reasoning_content") or "").strip()
         return {
             "text": text,
             "type": "solution" if hint_level == 4 else "hint",
@@ -445,7 +446,8 @@ def tutor_student_correction(problem, student_reasoning, index=None, timeout=35)
 
     try:
         response = post(TUTOR_URL, payload, timeout=timeout)
-        correction = response["choices"][0]["message"]["content"].strip()
+        msg = response["choices"][0]["message"]
+        correction = (msg.get("content") or msg.get("reasoning_content") or "").strip()
         return {
             "text": correction,
             "type": "correction",
@@ -807,7 +809,8 @@ def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout
 
     try:
         response = post(TUTOR_URL, payload, timeout=timeout)
-        text = response["choices"][0]["message"]["content"].strip()
+        msg = response["choices"][0]["message"]
+        text = (msg.get("content") or msg.get("reasoning_content") or "").strip()
         # Clean markdown headers, quotes and prefixes like "Step 1:", "Pas 1:", "**Step 1:**", "1. "
         text = text.strip("\"'` \t\r\n")
         text = re.sub(r"^#{1,6}\s*", "", text).strip()
@@ -1074,7 +1077,8 @@ def tutor_analyze_trap(problem, option_letter, index=None, timeout=35):
 
     try:
         response = post(TUTOR_URL, payload, timeout=timeout)
-        analysis = response["choices"][0]["message"]["content"].strip()
+        msg = response["choices"][0]["message"]
+        analysis = (msg.get("content") or msg.get("reasoning_content") or "").strip()
 
         # Safety filter: ensure the explanation never claims the wrong option is correct
         analysis_lower = analysis.lower()
