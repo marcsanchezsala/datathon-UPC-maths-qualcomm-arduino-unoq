@@ -37,9 +37,14 @@ def solve(problem, index=None, k=0, exclude_id=None, image_b64=None, llm_url=URL
             prob_lvl = int(problem.get("level") or 0)
             use_math = is_eng and (prob_lvl <= max_eng_lvl)
             target_url = math_url if use_math else llm_url
-            return solve(problem, index=index, k=k, exclude_id=exclude_id, image_b64=image_b64,
-                         llm_url=target_url, time_limit=time_limit, mode="hybrid",
-                         debias_alpha=debias_alpha)
+            res = solve(problem, index=index, k=k, exclude_id=exclude_id, image_b64=image_b64,
+                        llm_url=target_url, time_limit=time_limit, mode="hybrid",
+                        debias_alpha=debias_alpha)
+            if "error:" in str(res.get("status", "")) and target_url != llm_url:
+                res = solve(problem, index=index, k=k, exclude_id=exclude_id, image_b64=image_b64,
+                            llm_url=llm_url, time_limit=time_limit, mode="hybrid",
+                            debias_alpha=debias_alpha)
+            return res
 
         if "options" in problem and not problem.get("options") and not image_b64:
             if index is not None:
