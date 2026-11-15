@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Math Matrix Copilot</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --primary: #0f3460;
+      --accent: #e94560;
+      --green: #00b894;
+      --text: #dfe6e9;
+      --text-dim: #636e72;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+    .container { max-width: 520px; margin: 0 auto; }
+
+    /* Header */
+    .header { text-align: center; margin-bottom: 24px; }
+    .header h1 { font-size: 22px; font-weight: 600; color: var(--accent); }
+    .header p { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+
+    /* Status Card */
+    .status-card {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 14px;
+    }
+    .status-row:not(:last-child) { border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .status-label { color: var(--text-dim); }
+    .status-value { font-weight: 600; }
+    .status-value.busy { color: var(--accent); }
+    .status-value.ok { color: var(--green); }
+
+    /* Problem Display */
+    .problem-card {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(255,255,255,0.05);
+      min-height: 80px;
+    }
+    .problem-card h3 {
+      font-size: 13px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    .problem-text { font-size: 15px; line-height: 1.5; }
+
+    /* Answer Buttons */
+    .answers {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .answers button {
+      width: 56px;
+      height: 56px;
+      border: 2px solid var(--primary);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 24px;
+      font-weight: 700;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .answers button:hover {
+      background: var(--primary);
+      border-color: var(--accent);
+    }
+    .answers button:active {
+      transform: scale(0.95);
+    }
+    .answers button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    /* Confidence Slider */
+    .confidence-control {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .confidence-control label {
+      font-size: 13px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      display: block;
+      margin-bottom: 8px;
+    }
+    .confidence-control input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+    .confidence-label {
+      text-align: center;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-top: 4px;
+    }
+
+    /* Feedback Buttons */
+    .feedback {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .feedback button {
+      flex: 1;
+      padding: 12px;
+      border: 2px solid;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .feedback button.correct {
+      background: transparent;
+      border-color: var(--green);
+      color: var(--green);
+    }
+    .feedback button.correct:hover {
+      background: var(--green);
+      color: #fff;
+    }
+    .feedback button.incorrect {
+      background: transparent;
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .feedback button.incorrect:hover {
+      background: var(--accent);
+      color: #fff;
+    }
+    .feedback button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    /* Utility Buttons */
+    .utilities {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .utilities button {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: var(--surface);
+      color: var(--text-dim);
+      font-size: 13px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .utilities button:hover {
+      background: var(--primary);
+      color: var(--text);
+    }
+
+    /* Message */
+    .message {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 14px;
+      border-left: 3px solid var(--accent);
+      word-break: break-word;
+    }
+    .message.ok { border-left-color: var(--green); }
+
+    /* Separator */
+    .section-title {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin: 20px 0 10px 0;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>🧠 Math Matrix Copilot</h1>
+      <p>Arduino UNO Q · 8×13 LED Matrix</p>
+    </div>
+
+    <!-- Status -->
+    <div class="status-card">
+      <div class="status-row">
+        <span class="status-label">Status</span>
+        <span class="status-value" id="busy-status">Ready</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Mode</span>
+        <span class="status-value" id="mode-value">RST</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Confidence</span>
+        <span class="status-value" id="confidence-value">0/5</span>
+      </div>
+    </div>
+
+    <!-- Problem -->
+    <div class="problem-card">
+      <h3>Current Problem</h3>
+      <div class="problem-text" id="problem-text">Select an answer or set confidence to see it on the LED matrix.</div>
+    </div>
+
+    <!-- Answer Buttons -->
+    <div class="section-title">Answer (calls model)</div>
+    <div class="answers" id="answer-buttons">
+      <button onclick="sendAnswer('A')">A</button>
+      <button onclick="sendAnswer('B')">B</button>
+      <button onclick="sendAnswer('C')">C</button>
+      <button onclick="sendAnswer('D')">D</button>
+      <button onclick="sendAnswer('E')">E</button>
+    </div>
+
+    <!-- Feedback -->
+    <div class="section-title">Manual Feedback (check / cross)</div>
+    <div class="feedback">
+      <button class="correct" onclick="sendFeedback('A', true)">✓ A Correct</button>
+      <button class="correct" onclick="sendFeedback('B', true)">✓ B Correct</button>
+      <button class="correct" onclick="sendFeedback('C', true)">✓ C Correct</button>
+      <button class="correct" onclick="sendFeedback('D', true)">✓ D Correct</button>
+      <button class="correct" onclick="sendFeedback('E', true)">✓ E Correct</button>
+    </div>
+    <div class="feedback">
+      <button class="incorrect" onclick="sendFeedback('A', false)">✕ A</button>
+      <button class="incorrect" onclick="sendFeedback('B', false)">✕ B</button>
+      <button class="incorrect" onclick="sendFeedback('C', false)">✕ C</button>
+      <button class="incorrect" onclick="sendFeedback('D', false)">✕ D</button>
+      <button class="incorrect" onclick="sendFeedback('E', false)">✕ E</button>
+    </div>
+
+    <!-- Confidence -->
+    <div class="section-title">Confidence Bar</div>
+    <div class="confidence-control">
+      <label>Set matrix confidence (0-5)</label>
+      <input type="range" min="0" max="5" value="0" id="confidence-slider" oninput="setConfidence(this.value)">
+      <div class="confidence-label" id="conf-display">0/5</div>
+    </div>
+
+    <!-- Utilities -->
+    <div class="section-title">Utilities</div>
+    <div class="utilities">
+      <button onclick="clearMatrix()">Clear Matrix</button>
+      <button onclick="demoAll()">Demo All</button>
+    </div>
+
+    <!-- Message -->
+    <div class="message" id="message">Welcome! Choose an answer or set confidence.</div>
+  </div>
+
+  <script>
+    const API = '';
+
+    async function get(path) {
+      try {
+        const resp = await fetch(API + path);
+        return await resp.json();
+      } catch (e) {
+        return { error: e.message };
+      }
+    }
+
+    async function pollStatus() {
+      const s = await get('/status');
+      const busyEl = document.getElementById('busy-status');
+      const modeEl = document.getElementById('mode-value');
+      const confEl = document.getElementById('confidence-value');
+      const msgEl = document.getElementById('message');
+      const msgCard = document.getElementById('message');
+
+      if (s.busy) {
+        busyEl.textContent = 'Working...';
+        busyEl.className = 'status-value busy';
+        document.querySelectorAll('#answer-buttons button, .feedback button').forEach(b => b.disabled = true);
+      } else {
+        busyEl.textContent = 'Ready';
+        busyEl.className = 'status-value ok';
+        document.querySelectorAll('#answer-buttons button, .feedback button').forEach(b => b.disabled = false);
+      }
+
+      modeEl.textContent = s.mode || 'RST';
+      confEl.textContent = (s.confidence || 0) + '/5';
+      msgEl.textContent = s.message || '';
+      msgEl.className = 'message' + (s.correct === true ? ' ok' : '');
+    }
+
+    async function sendAnswer(letter) {
+      document.getElementById('problem-text').textContent = `Answering: ${letter}`;
+      const s = await get('/answer/' + letter);
+      pollStatus();
+    }
+
+    async function sendFeedback(letter, correct) {
+      document.getElementById('problem-text').textContent = `Feedback: ${letter} → ${correct ? '✓' : '✕'}`;
+      const s = await get('/feedback/' + letter + '/' + correct);
+      pollStatus();
+    }
+
+    async function setConfidence(val) {
+      document.getElementById('conf-display').textContent = val + '/5';
+      await get('/confidence/' + val);
+      pollStatus();
+    }
+
+    async function clearMatrix() {
+      await get('/clear');
+      pollStatus();
+    }
+
+    async function demoAll() {
+      await get('/demo/all');
+      pollStatus();
+    }
+
+    // Initial load and periodic polling
+    pollStatus();
+    setInterval(pollStatus, 1000);
+  </script>
+</body>
+</html>

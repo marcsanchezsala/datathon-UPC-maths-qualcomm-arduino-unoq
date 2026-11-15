@@ -1,0 +1,5 @@
+name: Math Matrix Copilot
+icon: 🧠
+description: Interactive math copilot with LED matrix feedback — shows answers, confidence, and thinking animations on the 8×13 LED matrix.
+bricks:
+  - arduino:web_ui
