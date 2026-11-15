@@ -1,5 +1,5 @@
-# Math on the Edge: Hierarchical Language+Level Router with Tier 0 Duplicate RAG
-### Champion Copilot for the Qualcomm Challenge — Datathon FME 2026 (Arduino UNO Q 4 GB)
+# Math on the Edge: an Offline Math Copilot on the Arduino UNO Q
+### Reason and Teach with Kangaroo problems — Datathon FME 2026, Qualcomm Challenge (Arduino UNO Q 4 GB)
 
 <img width="1526" height="927" alt="UPC-datathon" src="https://github.com/user-attachments/assets/daa7be34-b91a-4703-9581-7b5142f75d91" />
 
@@ -15,7 +15,7 @@ The **Math on the Edge** submission fulfills both competition tracks of the Data
    - Offline, autonomous mathematical problem solver for the international Kangaroo Math Competition ([M3Kang](https://huggingface.co/datasets/qualcomm/M3Kang)).
    - **What answers on the board:** `Qwen2.5-Math-1.5B-Instruct` alone (Q4_K_M, port 8081), the configuration in [`config.env`](config.env). Measured on a laptop with that configuration: **25.1% (141/562)** on our M3Kang validation set and **26.0% (26/100)** on the organizers' practice set of new problems. Random guessing gives 20%.
    - **Best result off the board:** the dual-model router described below (Qwen2.5-3B-Instruct + Qwen2.5-Math-1.5B) reached **28.8% (162/562)** on validation on a laptop. We do not submit it: Qwen2.5-3B takes 55–60 s per problem on the board's CPU, at the edge of the 60 s limit.
-   - On the physical board we recorded **32.0%** with **0 timeouts**.
+   - On the physical board we recorded **32.0% on 50 validation problems** (16/50) with **0 timeouts**.
    - Answers are rendered in real time onto the board's embedded **8x13 LED matrix** via the Arduino Router Bridge.
    - Run via: `python3 predict.py --input data/val.jsonl --output results/predictions.csv`
 
@@ -75,7 +75,7 @@ flowchart TD
 ### Key Architectural Pillars
 
 1. **Tier 0 Near-Duplicate RAG (`score >= 0.94`):**
-   In competition sets, 39.7% of problems suffer from OCR parsing gaps where answer choices were not extracted from printed sheets. Instead of blindly guessing, Tier 0 searches a localized vector database (`bge-small-en-v1.5` on Port 8082). When a near-identical problem statement is found with cosine similarity $\ge 0.94$, the verified historical label is returned with **100% deterministic accuracy**, yielding a $+2$ net score gain over the static fallback `"D"`.
+   In the validation set we evaluated on, prepared with the organizers' original OCR script, 223 of 562 problems (39.7%) had no answer choices, because they could not be read from the image. Our improved OCR (see *Reading the options* below) brings that down to 84 of 562. Instead of blindly guessing, Tier 0 searches a localized vector database (`bge-small-en-v1.5` on Port 8082). When a near-identical problem statement is found with cosine similarity $\ge 0.94$, the verified historical label is returned with **100% deterministic accuracy**, yielding a $+2$ net score gain over the static fallback `"D"`.
 2. **Zero-Overhead Hierarchical Language + Level Router:**
    A metadata-driven $O(1)$ router splits requests to the model best suited for the specific task:
    - **Catalan (`cat`, all levels):** Routed to **`Qwen2.5-3B-Instruct`** (Port 8081). The 3B model possesses broad multilingual pre-training that avoids the severe linguistic collapse observed in English-only mathematical models (27.8% vs 22.8%).
@@ -85,6 +85,38 @@ flowchart TD
    Instead of unrestricted token generation, Tier 1 enforces `root ::= "\\boxed{" [A-E] "}"` (`max_tokens=5`, `top_logprobs=20`). This extracts calibrated softmax probabilities for each option letter directly in distribution without wasteful autoregression, finishing in **0.2s–0.3s**.
 4. **Conditional Tier 2 Micro-CoT with Truncation Guard:**
    When Tier 1 top-1 confidence falls below 0.38 and remaining time $> 25$ seconds, the system escalates to a 220-token Chain-of-Thought reasoning burst. If the generation hits the token ceiling (`finish_reason == 'length'`), the parser enforces `allow_numeric=False`, preventing dangling numbers from intermediate equations from misidentifying options.
+
+### Reading the options: our OCR
+
+In M3Kang the five options are only in the problem's image, not in its text. The organizers' [`laptop/prepare_m3kang.py`](laptop/prepare_m3kang.py) read them with OCR on the whole image, which left many problems with no options and garbled fractions and exponents (`1/2` read as `12`, `n³` as `n3`). We rewrote how it reads them:
+
+- **Two passes.** OCR on the whole image only finds the markers `A)` to `E)`. If one is missing, usually `C)`, its place is inferred from the layout (5 in a row, 3 + 2, 2 + 2 + 1, one per line). Then each option is cut out of the image along its ink and read on its own.
+- **Maths notation.** Stacked fractions are read as `3/4`, exponents and degrees as `6^13`, `n³` and `78°`, and square roots as `√2`. An apostrophe, as in "L'Oriol", stays part of the word.
+- **Two languages as a check.** When the options have no words, they must read the same in English and Catalan. If they differ, both are dropped. If one language could not be read, it gets the options of the other.
+- **When in doubt, no options.** A picture, a symbol read with low confidence or a lost root sign leaves the problem empty, never with three or four options or a guessed value.
+
+| M3Kang, English and Catalan (1,747 problems) | Original OCR | Our OCR |
+| --- | ---: | ---: |
+| Problems with options, English | 1,078 (62%) | 1,473 (84%) |
+| Problems with options in at least one language | 1,156 | 1,473 |
+| Text-only problems with no options in any language | 172 | 20 |
+
+We checked 30 random problems whose options changed against their images: all 30 were right. Of 18 hard cases (fractions, roots, exponents, degrees), 17 were right; the wrong one (`√2` read as `2`) is now left empty. On the organizers' practice set both versions read 100 of 100 problems. [`laptop/test_prepare_m3kang.py`](laptop/test_prepare_m3kang.py) checks the reading with real OCR output from cases that used to fail. The 274 problems still without options are almost all problems whose options are drawings.
+
+The results tables below were measured on the validation set prepared with the original OCR.
+
+### The fine-tuned model: Qwen3.5-0.8B-aqua-reason
+
+To get a small model that reasons in a few short lines instead of guessing a letter, we fine-tuned Qwen3.5 0.8B, the organizers' model, with LoRA ([`finetune/`](finetune/)):
+
+- **Data:** 15,000 problems from [AQuA-RAT](https://huggingface.co/datasets/deepmind/aqua_rat) (Apache 2.0), multiple choice A to E with a worked solution. We kept short solutions that end on the right option, rewrote their end to `Answer: X` and shuffled the options, so the model does not learn a favourite letter. No M3Kang data was used for training.
+- **Training:** LoRA with rank 16, alpha 32, learning rate 2e-4, 2 epochs, loss on the answer only, in the exact prompt format the copilot uses. It runs on Google Colab ([`finetune/colab.ipynb`](finetune/colab.ipynb)), then merges the LoRA and exports a Q8_0 GGUF (833 MB) with the pinned llama.cpp commit.
+- **What it learned:** to reason briefly. It writes 103 tokens on average where the base model writes 175, and it reaches its own `Answer: X` far more often instead of being cut off.
+- **What it did not learn:** to calculate better. On validation it scores 21.4%, against 21.2% for the base model answering one letter. On the practice set it scores 30% against 26% for the base model reasoning, a difference within the noise of 100 problems.
+
+**Where we use it:** it is the model of the Teach track, where short, step-by-step explanations matter more than the final letter.
+
+**Why it does not answer the test:** we also considered it for the Reason track, but we did not have time to test it properly on the board. We think it would answer faster: its reasoning is shorter (about 32 s per problem on the board against 47 s for the base model, estimated from token counts and the board's measured speeds, not measured on the board), and it is about half the size of Qwen2.5-Math-1.5B, so each token costs less. With no board measurement and no clear gain in accuracy, we kept the measured configuration.
 
 ---
 
@@ -117,7 +149,7 @@ curl -L -o models/Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf \
   https://huggingface.co/bartowski/Qwen2.5-Math-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-Math-1.5B-Instruct-Q4_K_M.gguf
 
 # 2. Teaching Copilot & Socratic Edge Model: Qwen3.5-0.8B-aqua-reason (Port 8081 in teaching track, trained via finetune/)
-# Note: Stored locally in models/ or trained on AQuA-RAT using finetune/train.py
+# Not published as a download: train and export it with finetune/ (see finetune/README.md), then copy it to models/
 
 # 3. High-Capacity Multilingual Model: Qwen2.5-3B-Instruct (Port 8081 in dual router)
 curl -L -o models/Qwen2.5-3B-Instruct-Q4_K_M.gguf \
@@ -298,7 +330,7 @@ A thorough error analysis was performed on all 562 validation problems, segmente
 ### 4. Primary Empirical Failure Modes
 
 1. **OCR Option Extraction Failure (39.7% of all validation instances):**
-   223 out of 562 problems in M3Kang had empty `options: {}` due to upstream OCR ingestion barriers. Without visual tokens, models cannot read multiple-choice alternatives from the raw page. Tier 0 Duplicate RAG resolves exact near-duplicates ($\ge 0.94$), and fallback `"D"` handles the remainder.
+   223 out of 562 problems in the validation set we evaluated on had empty `options: {}`, because the organizers' OCR could not read them from the image. Our improved OCR reads options for all but 84 of them (see *Reading the options*). Without visual tokens, models cannot read multiple-choice alternatives from the raw page. Tier 0 Duplicate RAG resolves exact near-duplicates ($\ge 0.94$), and fallback `"D"` handles the remainder.
 2. **Visual Diagram Blindness (`text_only=False`):**
    Problems with visual illustrations yield 31.0% accuracy vs 26.0% on purely textual problems, but primarily because geometric diagrams often contain clues that pure text prompts miss. The lack of an edge-optimized Vision-Language Model (VLM) represents the ceiling for geometric questions.
 3. **Chain-of-Thought Truncation (`finish_reason == 'length'`):**
@@ -325,8 +357,9 @@ Documenting failed experiments and negative results is vital for edge AI enginee
 - **Why it failed:** Sub-3B models suffer from **negative transfer** and **prompt distraction**. When an example problem with distinct numerical values is inserted into the prompt, the model frequently copies the example's numbers rather than executing reasoning on the actual question. RAG is only effective at the extreme similarity threshold (Tier 0 $\ge 0.94$) for near-duplicates.
 
 ### What We Would Try Next
-1. **On-Device Quantized Multimodal Models (VLM):** Quantizing ultra-lightweight vision models such as **Moondream2** or **SmolVLM-500M** using `llama.cpp`'s `mtk-vision` or Qualcomm NPU acceleration to process problem diagram crops directly.
-2. **Speculative Decoding:** Running `Qwen2.5-0.5B` as a speculative drafter for `Qwen2.5-3B-Instruct` to accelerate Tier 2 CoT generation speed on ARM Cortex-A53.
+1. **Measure the fine-tuned Qwen3.5-0.8B-aqua-reason as the solver on the board.** We expect it to answer faster than the current configuration, but we only estimated its time on a laptop.
+2. **On-Device Quantized Multimodal Models (VLM):** Quantizing ultra-lightweight vision models such as **Moondream2** or **SmolVLM-500M** using `llama.cpp`'s `mtk-vision` or Qualcomm NPU acceleration to process problem diagram crops directly.
+3. **Speculative Decoding:** Running `Qwen2.5-0.5B` as a speculative drafter for `Qwen2.5-3B-Instruct` to accelerate Tier 2 CoT generation speed on ARM Cortex-A53.
 
 ---
 

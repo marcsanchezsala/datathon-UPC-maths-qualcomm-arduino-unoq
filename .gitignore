@@ -7,7 +7,6 @@ data/*
 results/*
 !results/.gitkeep
 !results/ablations.csv
-!results/eval-*.csv
 
 # Models live in ~/models, but just in case
 *.gguf

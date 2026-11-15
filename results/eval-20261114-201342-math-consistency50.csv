@@ -1,4 +1,0 @@
-id,language,level,has_options,label,answer,correct,seconds,status,prompt_tokens,retrieved
-lvl-5_2019_5,eng,5,False,D,D,1,0.0,ok,0,
-lvl-6_2024_30,cat,6,True,B,E,0,25.43,ok,111,
-lvl-4_2020_26,cat,4,True,E,E,1,21.59,ok,111,

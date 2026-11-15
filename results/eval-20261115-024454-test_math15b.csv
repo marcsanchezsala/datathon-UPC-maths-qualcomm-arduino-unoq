@@ -1,6 +1,0 @@
-id,language,level,has_options,label,answer,correct,seconds,status,prompt_tokens,retrieved
-lvl-2_2026_13,eng,2,True,C,B,0,0.31,ok,1,
-lvl-2_2026_12,cat,2,True,B,B,1,0.42,ok,86,
-lvl-7_2026_3,cat,7,True,A,A,1,0.48,ok,98,
-lvl-0_2026_9,cat,0,True,B,B,1,0.37,ok,107,
-lvl-4_2026_9,cat,4,True,A,E,0,0.37,ok,67,
