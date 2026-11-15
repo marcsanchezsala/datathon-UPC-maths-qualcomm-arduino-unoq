@@ -90,5 +90,5 @@ Aquest document conté el guió complet, sincronització temporal (timings) i ac
 ## Pla de Contingència (Pla B d'Emergència)
 
 - **Si la xarxa no funciona**: No cal Wi-Fi. La connexió s'efectua sempre via USB amb `adb forward tcp:8000 tcp:8000`.
-- **Si el portàtil té problemes de pantalla**: Tingueu llesta la presentació `PITCH_TEACHING_COPILOT.pptx` i el vídeo gravat de la demo al disc dur.
+- **Si el portàtil té problemes de pantalla**: Tingueu llesta la presentació `pitch_final.pdf` i el vídeo gravat de la demo al disc dur.
 - **Si el servei es reinicia**: El timeout està protegit a 35 segons i els serveis `systemd` es reinicien automàticament en segons (`Restart=on-failure`).
