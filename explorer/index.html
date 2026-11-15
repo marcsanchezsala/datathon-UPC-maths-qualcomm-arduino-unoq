@@ -391,6 +391,7 @@ async function open(key) {
   $("trans-result").innerHTML = ""; $("trans-btn").disabled = false;
   $("model").innerHTML = ""; $("asking").textContent = "";
   selectSocStep(1);
+  socSteps = {};
   $("soc-input").value = ""; $("soc-result").innerHTML = ""; $("soc-timer").innerHTML = "";
   $("trap-result").innerHTML = ""; $("trap-timer").innerHTML = "";
   document.querySelectorAll("#trap-options button").forEach(b => {
@@ -548,6 +549,30 @@ function nextStep(r) {
 // ── Teaching: Socratic Tutor & Trap Detector (Edge Optimized) ──────────
 
 let currentSocStep = 1;
+let socSteps = {};
+
+function renderSocSteps() {
+  const stepTitles = {
+    1: "Step 1: Understand the data and the goal",
+    2: "Step 2: Strategy and mathematical modeling",
+    3: "Step 3: Calculation and edge-case checking",
+  };
+  const keys = Object.keys(socSteps).map(Number).sort((a, b) => a - b);
+  $("soc-result").innerHTML = keys.map(s => {
+    const item = socSteps[s];
+    return `
+      <div class="hint-box" style="border-left: 4px solid var(--accent); margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div>
+            <span class="level-badge">${s}</span>
+            <span class="rung">${esc(stepTitles[s] || "Socratic Guidance")}</span>
+          </div>
+        </div>
+        <div style="font-size:14px;line-height:1.5;">${esc(item.text)}</div>
+      </div>
+    `;
+  }).join("");
+}
 
 function selectSocStep(step) {
   currentSocStep = step;
@@ -579,25 +604,15 @@ async function askSocratic(step = null) {
     }
     $("soc-timer").innerHTML = tag;
 
-    const stepTitles = {
-      1: "Step 1: Understand the data and the goal",
-      2: "Step 2: Strategy and mathematical modeling",
-      3: "Step 3: Calculation and edge-case checking",
-    };
-    $("soc-result").innerHTML = `
-      <div class="hint-box" style="border-left: 4px solid var(--accent); margin-top:8px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <div>
-            <span class="level-badge">${s}</span>
-            <span class="rung">${esc(stepTitles[s] || "Socratic Guidance")}</span>
-          </div>
-        </div>
-        <div style="font-size:14px;line-height:1.5;">${esc(r.text)}</div>
-      </div>
-    `;
+    socSteps[s] = { text: r.text };
+    renderSocSteps();
+    if (s < 3) {
+      selectSocStep(s + 1);
+    }
   } catch (err) {
     $("soc-timer").innerHTML = `<span style="color:var(--bad)">Error</span>`;
-    $("soc-result").innerHTML = `<div class="hint-box error-box"><b>Error:</b> ${esc(err.message)}</div>`;
+    renderSocSteps();
+    $("soc-result").insertAdjacentHTML("beforeend", `<div class="hint-box error-box" style="margin-top:8px;"><b>Error:</b> ${esc(err.message)}</div>`);
   } finally {
     btn.disabled = false;
   }
