@@ -9,7 +9,7 @@
 
 ## 1. What It Does: A Dual-Track Solution (Reason & Teach)
 
-The **Math on the Edge** submission fulfills both competition tracks of the Datathon FME 2026 Qualcomm challenge directly on the **Arduino UNO Q 4 GB** (Qualcomm QRB2210 quad-core Arm CPU):
+The **Math on the Edge** submission, by team **InClaudeWeTrust**, fulfills both competition tracks of the Datathon FME 2026 Qualcomm challenge directly on the **Arduino UNO Q 4 GB** (Qualcomm QRB2210 quad-core Arm CPU):
 
 1. **Track 1 — Reason (Champion Competition Solver):**
    - Offline, autonomous mathematical problem solver for the international Kangaroo Math Competition ([M3Kang](https://huggingface.co/datasets/qualcomm/M3Kang)).
@@ -367,7 +367,12 @@ Documenting failed experiments and negative results is vital for edge AI enginee
 
 Developed with passion for the **Datathon FME 2026 — Qualcomm Challenge** (Facultat de Matemàtiques i Estadística, Universitat Politècnica de Catalunya):
 
-- **Marc** & Team *Math on the Edge*
+Team **InClaudeWeTrust**:
+
+- Jaume Majó
+- Marc Sanchez
+- Oscar Lu
+- Lihao Jin
 
 ### Academic & Technical Citations
 
