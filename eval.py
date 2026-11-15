@@ -19,7 +19,10 @@ import time
 from collections import Counter, defaultdict
 
 from copilot.config import CONFIG
+from copilot.llm import MIN_REASON_TOKENS, REASONING
 from copilot.pipeline import TIME_LIMIT, solve
+
+REASON_FIELDS = ["budget", "reason_tokens", "calls", "reasoning"] if REASONING else []
 
 
 def git_commit():
@@ -70,7 +73,7 @@ def main():
     with open(detail_path, "w", newline="") as out:
         writer = csv.writer(out)
         writer.writerow(["id", "language", "level", "has_options", "label", "answer",
-                         "correct", "seconds", "status", "prompt_tokens", "retrieved"])
+                         "correct", "seconds", "status", "prompt_tokens", "retrieved"] + REASON_FIELDS)
         for n, problem in enumerate(problems, 1):
             result = solve(problem, index=index, k=args.rag, exclude_id=problem["id"])
             correct = result["answer"] == problem["label"]
@@ -78,7 +81,8 @@ def main():
             rows.append(row)
             writer.writerow([problem["id"], problem["language"], problem["level"], row["has_options"],
                              problem["label"], result["answer"], int(correct), result["seconds"],
-                             result["status"], result["prompt_tokens"], result["retrieved"]])
+                             result["status"], result["prompt_tokens"], result["retrieved"]]
+                            + [result.get("reason", {}).get(f, "") for f in REASON_FIELDS])
             out.flush()
             running = 100 * sum(r["correct"] for r in rows) / len(rows)
             print(f"[{n}/{len(problems)}] {problem['id']} {problem['language']}: "
@@ -97,6 +101,12 @@ def main():
     print(f"Latency: mean {statistics.mean(seconds):.1f} s, median {statistics.median(seconds):.1f} s, "
           f"worst {max(seconds):.1f} s, over {TIME_LIMIT:.0f} s: {over}")
     print(f"Status: {dict(Counter(r['status'] for r in rows))}")
+    if REASONING:
+        reasoned = [r["reason"] for r in rows if r.get("reason", {}).get("budget", 0) >= MIN_REASON_TOKENS]
+        tokens = [x["reason_tokens"] for x in reasoned]
+        print(f"Reasoning: {len(reasoned)}/{len(rows)} problems, mean {statistics.mean(tokens or [0]):.0f} tokens, "
+              f"hit the budget: {sum(x['reason_tokens'] >= x['budget'] > 0 for x in reasoned)}, "
+              f"needed the second call: {sum(x['calls'] == 2 for x in reasoned)}")
 
     for field, title in (("language", "By language"), ("level", "By level"),
                          ("has_options", "By whether OCR found the options")):
