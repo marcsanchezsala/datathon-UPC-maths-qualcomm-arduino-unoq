@@ -32,3 +32,5 @@ time,name,commit,input,languages,n,rag_k,accuracy,mean_s,worst_s,over_limit
 20261115-002117,val_full_50,8ba8616,data/val_full.jsonl,all,50,0,38.0,0.4,5.9,0
 20261115-003048,hier-router-clean-val,de36e63,data/val.jsonl,all,50,0,38.0,0.3,6.4,0
 20261115-003115,hier-router-full-val-clean,de36e63,data/val.jsonl,all,562,0,28.8,0.7,14.0,0
+20261115-024500,math15b_demo_train,cb2d3cd,data/demo/train.jsonl,all,100,0,24.0,1.9,13.9,0
+20261115-024837,math15b_full_val,cb2d3cd,data/val.jsonl,all,562,0,28.3,0.5,6.7,0
