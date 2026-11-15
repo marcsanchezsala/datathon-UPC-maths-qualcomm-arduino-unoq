@@ -24,17 +24,28 @@ def main():
     args = p.parse_args()
 
     languages = set(filter(None, args.languages.split(",")))
-    with open(args.input) as f:
+    if not os.path.exists(args.input):
+        raise FileNotFoundError(f"Input file not found: {args.input}")
+    with open(args.input, "r", encoding="utf-8") as f:
         problems = [json.loads(line) for line in f if line.strip()]
     problems = [x for x in problems
-                if (not languages or x["language"] in languages)
+                if (not languages or x.get("language") in languages)
                 and (x.get("options") or not args.only_with_options)]
+
+    db_dir = os.path.dirname(os.path.abspath(args.db))
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     if os.path.exists(args.db):
         os.remove(args.db)
 
+    if not problems:
+        print(f"No problems matched criteria from {args.input}")
+        return
+
     start = time.perf_counter()
     for done in rag.build(args.db, problems):
-        rate = done / (time.perf_counter() - start)
+        elapsed = max(0.001, time.perf_counter() - start)
+        rate = done / elapsed
         print(f"\r{done}/{len(problems)} problems embedded, {rate:.1f}/s", end="", flush=True)
     size = os.path.getsize(args.db) / 1e6
     print(f"\nWrote {args.db} ({size:.1f} MB) in {time.perf_counter() - start:.0f} s")
