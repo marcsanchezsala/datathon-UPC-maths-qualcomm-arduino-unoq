@@ -40,7 +40,7 @@ Aquest document conté el guió complet, sincronització temporal (timings) i ac
 > **Guió verbal**:
 > *"La resposta és el **M3Kang Teaching Copilot**, executant-se completament dins l'Arduino UNO Q amb SoC Qualcomm QRB2210.*
 > *Hem dissenyat una arquitectura dual optimitzada amb llama.cpp:*
-> *D'una banda, **Qwen 3.5 de 0.8 bilions de paràmetres** quantitzat a Q8, encarregat del raonament socràtic pas a pas i Micro-CoT.*
+> *D'una banda, **Qwen 3.5 de 0.8B finetunejat per nosaltres amb AQuA-reason** (Q8), especialitzat en raonament socràtic pas a pas i explicació de trampes.*
 > *De l'altra, **bge-small** per a cerca vectorial semàntica mitjançant RAG sobre una base de dades SQLite local.*
 > *Tot el sistema corre en 4 GB de RAM física, garantint privacitat absoluta i disponibilitat a qualsevol escola rural o aula sense Wi-Fi."*
 
