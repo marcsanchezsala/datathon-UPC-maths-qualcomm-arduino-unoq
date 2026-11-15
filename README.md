@@ -7,6 +7,8 @@
 
 ---
 
+## Arduino Project Hub Site: "https://projecthub.arduino.cc/projects/4a4fa419-3e17-4834-a386-5fe7def27f01/preview"
+
 ## 1. What It Does: A Dual-Track Solution (Reason & Teach)
 
 The **Math on the Edge** submission, by team **InClaudeWeTrust**, fulfills both competition tracks of the Datathon FME 2026 Qualcomm challenge directly on the **Arduino UNO Q 4 GB** (Qualcomm QRB2210 quad-core Arm CPU):
