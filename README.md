@@ -20,7 +20,7 @@ The **Math on the Edge** submission fulfills both competition tracks of the Data
    - Offline, autonomous mathematical problem solver for the international Kangaroo Math Competition ([M3Kang](https://huggingface.co/datasets/qualcomm/M3Kang)).
    - Solves competition problems in **Catalan** and **English**, achieving **28.8% (162/562)** overall validation accuracy, **30.1% (102/339)** on OCR options problems, and **32.0%** in real-time execution on the physical board with **0 timeouts**.
    - Answers are rendered in real time onto the board's embedded **8x13 LED matrix** via the Arduino Router Bridge.
-   - Run via: `python3 predict.py --input data/val.jsonl --output results/predictions.jsonl`
+   - Run via: `python3 predict.py --input data/val.jsonl --output results/predictions.csv`
 
 2. **Track 2 — Teach (Socratic Teaching Copilot & Edge Companion):**
    - Interactive learning companion designed for classrooms without cloud connectivity.
