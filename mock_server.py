@@ -94,6 +94,21 @@ PROBLEMS = {
         ],
         "solution": "Ricard: 8 blocs/h. Tomàs: 8 - 2 = 6 blocs/h.\nTaxa combinada = 8 + 6 = 14 blocs/h.\nEn 3 hores: 14 × 3 = 42 blocs.",
     },
+    "lvl-0_2016_16": {
+        "level": 0, "year": 2016, "label": "A",
+        "text": {
+            "eng": "From a rectangle measuring 15 × 9 cm, we cut out a square with a perimeter of 8 cm from each vertex. What is the perimeter of the resulting figure?",
+            "cat": "D’un rectangle de 15 × 9 cm retallem en cada vèrtex un quadrat de 8 cm de perímetre. Quin és el perímetre de la figura que en resulta?",
+            "esp": "De un rectángulo de 15 × 9 cm recortamos en cada vértice un cuadrado de 8 cm de perímetro. ¿Cuál es el perímetro de la figura resultante?",
+        },
+        "options": {"A": "48cm", "B": "40cm", "C": "32cm", "D": "24cm", "E": "16cm"},
+        "hints": [
+            "📌 **Estratègia recomanada:** Aquest és un problema geomètric: 1) Identifica les propietats de la figura (cares, vèrtexs, costats o patrons), 2) Descompon la figura en capes o elements simples, 3) Calcula la mesura demanada pas a pas.\n\n💡 **Exemple de referència:** Un quadrat de costat 10 cm té un perímetre de 40 cm.\n**Solució de l'exemple:** L'opció correcta és B) 40 cm.",
+            "Calcula primer el perímetre del rectangle original: 2 × (15 + 9) = 48 cm.",
+            "Fixa't en què passa en retallar un quadrat d'una cantonada: els dos segments que treus són substituïts exactament per dos segments iguals cap a l'interior.",
+        ],
+        "solution": "Perímetre rectangle original = 2 × (15 + 9) = 48 cm.\nEn retallar un quadrat de cada vèrtex, es retiren dos segments de 2 cm i s'afegeixen dos segments idèntics de 2 cm cap endins: el perímetre no canvia.\nPerímetre final = 48 cm.\n\\boxed{A}",
+    },
 }
 
 LANGS = ["eng", "cat", "esp"]
@@ -273,6 +288,11 @@ class MockHandler(BaseHTTPRequestHandler):
                     2: "Quina és la taxa de producció combinada de tots dos treballant junts en una sola hora?",
                     3: "Com multipliques la taxa combinada d'1 hora pel total de 3 hores per obtenir la quantitat final?",
                 },
+                "lvl-0_2016_16": {
+                    1: "Quines són les mides i el perímetre de la figura original abans de fer cap tall?",
+                    2: "Com afecta el tall de les cantonades a la longitud del perímetre?",
+                    3: "Com calcules el perímetre final de la figura resultant?",
+                },
             }
             prob_steps = socratic_qa.get(pid, {})
             text = prob_steps.get(step, f"Pas {step}: Analitza les dades del problema i reflexiona sobre el mètode.")
@@ -320,6 +340,12 @@ class MockHandler(BaseHTTPRequestHandler):
                     "B": "Trampa de càlcul: 30 no correspon a cap combinació correcta de les taxes en 3 hores.",
                     "D": "Trampa d'assumpció errònia: s'ha assumit que tots dos feien 8 blocs/hora (8 + 8 = 16, i 16 × 3 = 48), oblidant que el segon en fa 2 menys.",
                     "E": "Trampa de signe: s'ha sumat 2 en lloc de restar 2 a la producció del segon treballador.",
+                },
+                "lvl-0_2016_16": {
+                    "B": "Trampa de sostracció simple: s'han restat 8 cm del perímetre original sense considerar la forma dels talls.",
+                    "C": "Trampa de sostracció quàdruple: s'han restat 4 × 8 = 32 cm com si el perímetre de cada quadrat es perdés sencer.",
+                    "D": "Trampa de reducció a la meitat: s'ha dividit erròniament el perímetre original.",
+                    "E": "Trampa d'extrem: s'ha calculat només una fracció mínima dels costats.",
                 },
             }
             prob_traps = trap_explanations.get(pid, {})
@@ -377,6 +403,12 @@ class MockHandler(BaseHTTPRequestHandler):
                     "Taxa combinada = 8 + 6 = 14 blocs/h.\n"
                     "En 3 hores = 14 × 3 = 42 blocs.\n"
                     "\\boxed{C}"
+                ),
+                "lvl-0_2016_16": (
+                    "Original perimeter: 2 × (15 + 9) = 48 cm.\n"
+                    "Cutting each corner replaces 2 outer segments of 2 cm with 2 inner segments of 2 cm.\n"
+                    "The perimeter remains unchanged: 48 cm.\n"
+                    "\\boxed{A}"
                 ),
             }
             sol_text = micro_cot_solutions.get(pid, f"{p['solution']}\n\\boxed{{{p['label']}}}")

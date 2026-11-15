@@ -30,6 +30,7 @@ from copilot.tutor import (  # noqa: E402
     tutor_adaptive_next,
     select_adaptive_problem,
     tutor_socratic_step,
+    detect_problem_domain,
     tutor_analyze_trap,
     find_rag_examples,
     find_counterexample,

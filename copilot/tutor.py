@@ -561,48 +561,205 @@ def select_adaptive_problem(problems, current_level, history=None, language=None
 
 # ── Interactive Socratic Tutor & Trap Detector (Edge Optimized) ──────────
 
+_GEOM_RE = re.compile(
+    r"\b(?:perim(?:eter|etre|etro|etres|eters|etros)|perímetre|perímetro|area|àrea|área|"
+    r"rectangle|rectangles|rectàngul|rectángulo|rectángulos|"
+    r"square|squares|quadrat|quadrats|cuadrado|cuadrados|"
+    r"triangle|triangles|triàngul|triángulo|triángulos|"
+    r"cube|cubes|cub|cubs|cubo|cubos|"
+    r"circle|circles|cercle|cercles|círculo|círculos|"
+    r"angle|angles|àngle|ángulo|ángulos|"
+    r"vertex|vertices|vèrtex|vèrtexs|vértice|vértices|corner|corners|"
+    r"cm|m²|m2)\b",
+    re.IGNORECASE,
+)
+
+_RATES_RE = re.compile(
+    r"\b(?:hours?|hores?|horas?|days?|dies?|dias?|días?|nights?|nits?|noches?|"
+    r"km/h|speed|velocitat|velocidad|"
+    r"climb(?:s|ed|ing)?|puja|pugen|sube|suben|"
+    r"rellisca|rellisquen|slide(?:s|d)?|resbala|resbalan|"
+    r"rates?|ritmes?|ritmos?|together|junts?|juntes?|juntos?|juntas?)\b",
+    re.IGNORECASE,
+)
+
+_LOGIC_RE = re.compile(
+    r"\b(?:digits?|dígits?|dígitos?|xifres?|cifras?|"
+    r"numbers?|nombres?|números?|"
+    r"orders?|ordres?|ordens?|órdenes?|"
+    r"colou?rs?|colors?|"
+    r"blacks?|negres?|negros?|"
+    r"whites?|blancs?|blancos?|"
+    r"arrange(?:s|d|ment)?|coins?|monedas?|monedes?)\b",
+    re.IGNORECASE,
+)
+
+
+def detect_problem_domain(text):
+    """Classify problem into 'geometry', 'rates', 'logic_counting', or 'general'."""
+    if not text:
+        return "general"
+    if isinstance(text, dict):
+        text = text.get("text", "")
+    t = str(text)
+    if _GEOM_RE.search(t):
+        return "geometry"
+    if _RATES_RE.search(t):
+        return "rates"
+    if _LOGIC_RE.search(t):
+        return "logic_counting"
+    return "general"
+
+
 SOCRATIC_STEP_PROMPTS = {
-    1: (
-        "Ask ONLY about identifying the individual initial quantities or rates from the text "
-        "(e.g. how many each entity produces in 1 unit of time). Do NOT ask for the final combined answer. "
-        "Max 20 words."
-    ),
-    2: (
-        "Ask ONLY about how to find the intermediate combined rate or operation that connects the parts. "
-        "Do NOT ask for the final total yet. Max 20 words."
-    ),
-    3: (
-        "Ask ONLY about how to scale or multiply the combined amount by the total time or duration "
-        "to get the final answer. Max 20 words."
-    ),
+    "geometry": {
+        1: (
+            "Focus strictly on the original base shape. Ask ONE short question (max 18 words) "
+            "about the dimensions or perimeter of the original shape before any cuts."
+        ),
+        2: (
+            "Focus strictly on the modification at the vertices/edges. Ask ONE short question (max 18 words) "
+            "about how the cut or fold affects the boundary/perimeter length."
+        ),
+        3: (
+            "Focus strictly on deducing the final perimeter or measurement of the resulting figure "
+            "from the original shape and the modifications. Max 18 words."
+        ),
+    },
+    "rates": {
+        1: (
+            "Focus strictly on identifying the individual initial quantities or rates from the text "
+            "(e.g. how much each entity produces in 1 hour or 1 unit of time). Do NOT ask for the final combined answer. "
+            "Ask ONE short question (max 18 words)."
+        ),
+        2: (
+            "Focus strictly on calculating the combined rate or net intermediate change per cycle or hour. "
+            "Do NOT ask for the final total yet. Ask ONE short question (max 18 words)."
+        ),
+        3: (
+            "Focus strictly on scaling or multiplying the combined amount by the total time or duration "
+            "to get the final answer. Ask ONE short question (max 18 words)."
+        ),
+    },
+    "logic_counting": {
+        1: (
+            "Focus strictly on identifying the key initial data, elements, or conditions given in the problem. "
+            "Ask ONE short question (max 18 words)."
+        ),
+        2: (
+            "Focus strictly on discovering the intermediate rule, pattern, or relationship between the parts. "
+            "Ask ONE short question (max 18 words)."
+        ),
+        3: (
+            "Focus strictly on calculating or deducing the final answer from the pattern or rule found. "
+            "Ask ONE short question (max 18 words)."
+        ),
+    },
+    "general": {
+        1: (
+            "Focus strictly on identifying the key initial data or conditions given in the problem. "
+            "Ask ONE short question (max 18 words)."
+        ),
+        2: (
+            "Focus strictly on discovering the intermediate rule, pattern, or relationship connecting the parts. "
+            "Ask ONE short question (max 18 words)."
+        ),
+        3: (
+            "Focus strictly on calculating or deducing the final answer from the intermediate steps. "
+            "Ask ONE short question (max 18 words)."
+        ),
+    },
 }
 
+# Backward compatibility: integer keys mapping to rates prompts
+SOCRATIC_STEP_PROMPTS[1] = SOCRATIC_STEP_PROMPTS["rates"][1]
+SOCRATIC_STEP_PROMPTS[2] = SOCRATIC_STEP_PROMPTS["rates"][2]
+SOCRATIC_STEP_PROMPTS[3] = SOCRATIC_STEP_PROMPTS["rates"][3]
+
 SOCRATIC_DEFAULT_FALLBACKS = {
-    "cat": {
-        1: "Quina quantitat o taxa individual produeix o té cadascun en 1 unitat de temps segons l'enunciat?",
-        2: "Quina és la taxa o quantitat combinada de tots dos en una unitat de temps?",
-        3: "Com multipliques la quantitat combinada pel temps o durada total per obtenir la resposta final?",
+    "geometry": {
+        "cat": {
+            1: "Quines són les mides i el perímetre de la figura original abans de fer cap tall?",
+            2: "Com afecta el tall de les cantonades a la longitud del perímetre?",
+            3: "Com calcules el perímetre final de la figura resultant?",
+        },
+        "eng": {
+            1: "What are the dimensions and perimeter of the original shape before any cuts?",
+            2: "How does cutting the corners affect the length of the perimeter?",
+            3: "How do you calculate the final perimeter of the resulting figure?",
+        },
+        "esp": {
+            1: "¿Cuáles son las medidas y el perímetro de la figura original antes de hacer ningún corte?",
+            2: "¿Cómo afecta el corte de las esquinas a la longitud del perímetro?",
+            3: "¿Cómo calculas el perímetro final de la figura resultante?",
+        },
     },
-    "eng": {
-        1: "What is the individual initial quantity or rate produced by each one in 1 unit of time?",
-        2: "What is the intermediate combined rate or operation connecting both parts in 1 unit of time?",
-        3: "How do you scale or multiply the combined amount by the total time or duration to get the final answer?",
+    "rates": {
+        "cat": {
+            1: "Quina quantitat o taxa individual produeix o té cadascun en 1 unitat de temps segons l'enunciat?",
+            2: "Quina és la taxa o quantitat combinada de tots dos en una unitat de temps?",
+            3: "Com multipliques la quantitat combinada pel temps o durada total per obtenir la resposta final?",
+        },
+        "eng": {
+            1: "What is the individual initial quantity or rate produced by each one in 1 unit of time?",
+            2: "What is the intermediate combined rate or operation connecting both parts in 1 unit of time?",
+            3: "How do you scale or multiply the combined amount by the total time or duration to get the final answer?",
+        },
+        "esp": {
+            1: "¿Qué cantidad o tasa individual produce cada uno en 1 unidad de tiempo según el enunciado?",
+            2: "¿Cuál es la tasa o cantidad combinada de ambos en una unidad de tiempo?",
+            3: "¿Cómo multiplicas la cantidad combinada por el tiempo o duración total para obtener la respuesta final?",
+        },
     },
-    "esp": {
-        1: "¿Qué cantidad o tasa individual produce cada uno en 1 unidad de tiempo según el enunciado?",
-        2: "¿Cuál es la tasa o cantidad combinada de ambos en una unidad de tiempo?",
-        3: "¿Cómo multiplicas la cantidad combinada por el tiempo o duración total para obtener la respuesta final?",
+    "logic_counting": {
+        "cat": {
+            1: "Quines dades, quantitats o condicions inicials clau ens dóna l'enunciat?",
+            2: "Quina regla, patró o relació intermèdia connecta aquests elements?",
+            3: "Com dedueixes la resposta final a partir del patró o regla que has trobat?",
+        },
+        "eng": {
+            1: "What are the key initial data, numbers, or conditions given in the problem?",
+            2: "What intermediate rule, pattern, or relationship connects these elements?",
+            3: "How do you deduce the final answer using the pattern or rule found?",
+        },
+        "esp": {
+            1: "¿Qué datos, cantidades o condiciones iniciales clave nos da el enunciado?",
+            2: "¿Qué regla, patrón o relación intermedia conecta estos elementos?",
+            3: "¿Cómo deduces la respuesta final a partir del patrón o regla encontrada?",
+        },
+    },
+    "general": {
+        "cat": {
+            1: "Quines són les dades o condicions inicials clau que ens proporciona l'enunciat?",
+            2: "Quina és la relació o operació intermèdia que connecta les parts?",
+            3: "Com calcules o dedueixes la resposta final a partir de les dades obtingudes?",
+        },
+        "eng": {
+            1: "What are the key initial data or conditions provided in the problem?",
+            2: "What is the intermediate relationship or operation connecting the parts?",
+            3: "How do you calculate or deduce the final answer from the intermediate steps?",
+        },
+        "esp": {
+            1: "¿Cuáles son los datos o condiciones iniciales clave proporcionados en el enunciado?",
+            2: "¿Cuál es la relación u operación intermedia que conecta las partes?",
+            3: "¿Cómo calculas o deduces la respuesta final a partir de los pasos intermedios?",
+        },
     },
 }
+
+# Backward compatibility aliases for direct language indexing
+SOCRATIC_DEFAULT_FALLBACKS["cat"] = SOCRATIC_DEFAULT_FALLBACKS["rates"]["cat"]
+SOCRATIC_DEFAULT_FALLBACKS["eng"] = SOCRATIC_DEFAULT_FALLBACKS["rates"]["eng"]
+SOCRATIC_DEFAULT_FALLBACKS["esp"] = SOCRATIC_DEFAULT_FALLBACKS["rates"]["esp"]
 
 
 def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout=35):
     """Generate a 3-step Socratic guiding question adapted to edge constraints (<35s, <=50 tokens).
 
     step:
-      1 = Understanding individual initial quantities/rates
-      2 = Strategy and intermediate combined rate/operation
-      3 = Final calculation and total duration scaling
+      1 = Understanding initial data / base shape / individual quantities
+      2 = Intermediate strategy / transformation / combined rate
+      3 = Final calculation / resulting figure / scaling by duration
     """
     try:
         step = int(step)
@@ -611,18 +768,31 @@ def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout
     step = max(1, min(step, 3))
     timeout = min(timeout, 35)
 
-    lang = problem.get("language", "cat")
-    lang_fallbacks = SOCRATIC_DEFAULT_FALLBACKS.get(lang, SOCRATIC_DEFAULT_FALLBACKS["cat"])
-    default_msg = lang_fallbacks.get(step, lang_fallbacks[1])
+    prob_text = problem.get("text", "") if isinstance(problem, dict) else str(problem)
+    domain = detect_problem_domain(prob_text)
+    lang = problem.get("language", "cat") if isinstance(problem, dict) else "cat"
+    if lang not in ("cat", "eng", "esp"):
+        lang = "cat"
+
+    domain_fallbacks = SOCRATIC_DEFAULT_FALLBACKS.get(domain, SOCRATIC_DEFAULT_FALLBACKS.get("general", {}))
+    lang_fallbacks = domain_fallbacks.get(lang, domain_fallbacks.get("cat", {}))
+    default_msg = lang_fallbacks.get(step, "Quina és la següent dada clau a considerar?")
+
     lang_name = "Catalan" if lang == "cat" else ("Spanish" if lang == "esp" else "English")
 
-    problem_text = _build_problem_text(problem)
-    step_instruction = SOCRATIC_STEP_PROMPTS.get(step, SOCRATIC_STEP_PROMPTS[1])
-    system_prompt = f"You are a Socratic math tutor. {step_instruction} Respond in {lang_name}."
+    problem_text = _build_problem_text(problem) if isinstance(problem, dict) else str(problem)
+    domain_prompts = SOCRATIC_STEP_PROMPTS.get(domain, SOCRATIC_STEP_PROMPTS.get("general", {}))
+    step_instruction = domain_prompts.get(step, domain_prompts.get(1, ""))
+
+    system_prompt = (
+        f"You are a Socratic math tutor. {step_instruction} "
+        f"Respond strictly in {lang_name}. Do NOT add any prefix like 'Step 1:', 'Pas 1:' or 'Paso 1:'. "
+        f"Ask ONE direct question only (max 18 words)."
+    )
     user_prompt = f"Problem:\n{problem_text}\n"
     if student_input:
         user_prompt += f"Student's response so far: {student_input}\n"
-    user_prompt += f"Provide the Step {step} guiding question in {lang_name} (max 20 words)."
+    user_prompt += f"Ask the Step {step} guiding question in {lang_name} (max 18 words, no prefix):"
 
     payload = {
         "messages": [
@@ -638,9 +808,31 @@ def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout
     try:
         response = post(TUTOR_URL, payload, timeout=timeout)
         text = response["choices"][0]["message"]["content"].strip()
+        # Clean markdown headers, quotes and prefixes like "Step 1:", "Pas 1:", "**Step 1:**", "1. "
+        text = text.strip("\"'` \t\r\n")
+        text = re.sub(r"^#{1,6}\s*", "", text).strip()
+        text = re.sub(r"^\*{0,2}(?:Step|Pas|Paso)\s*\d+\s*[:\.\-–—]?\s*\*{0,2}", "", text, flags=re.IGNORECASE).strip()
+        text = re.sub(r"^\*{0,2}(?:Pregunta|Question)\s*\d*\s*[:\.\-–—]?\s*\*{0,2}", "", text, flags=re.IGNORECASE).strip()
+        text = re.sub(r"^\d+[\.\)]\s*", "", text).strip()
+        text = text.strip("\"'` \t\r\n")
+
+        # Guard against English leak when problem is in Catalan or Spanish
+        if lang in ("cat", "esp") and text:
+            eng_starters = (
+                "what is", "what are", "how do", "how does", "how can", "how many",
+                "which is", "find the", "calculate the", "identify the", "determine the",
+                "focus on", "ask about", "step 1", "step 2", "step 3"
+            )
+            if any(text.lower().startswith(s) for s in eng_starters):
+                text = default_msg
+
+        if not text:
+            text = default_msg
+
         return {
             "text": text,
             "step": step,
+            "domain": domain,
             "type": "socratic",
             "status": "ok",
             "prompt_tokens": response.get("timings", {}).get("prompt_n", 0),
@@ -651,6 +843,7 @@ def tutor_socratic_step(problem, step=1, student_input=None, index=None, timeout
         return {
             "text": default_msg,
             "step": step,
+            "domain": domain,
             "type": "socratic",
             "status": "fallback",
         }
