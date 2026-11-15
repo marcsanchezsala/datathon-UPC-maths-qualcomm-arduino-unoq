@@ -208,7 +208,7 @@ class App:
 
         try:
             result = tutor_socratic_step(
-                problem, step=step, student_input=clean_input, index=self.index, timeout=35
+                problem, step=step, student_input=clean_input, index=self.index, timeout=60
             )
         except Exception as e:
             result = {
@@ -233,7 +233,7 @@ class App:
 
         try:
             result = tutor_analyze_trap(
-                problem, option_letter=option, index=self.index, timeout=35
+                problem, option_letter=option, index=self.index, timeout=60
             )
         except Exception as e:
             result = {
@@ -265,7 +265,7 @@ class App:
         if cached:
             state["level"] = min(level + 1, MAX_HINT_LEVEL)
             return cached
-        result = tutor_generate(problem, index=self.index, hint_level=level, timeout=35)
+        result = tutor_generate(problem, index=self.index, hint_level=level, timeout=60)
         if self._leaks(problem, result.get("text", "")):
             result = {
                 "type": "hint", "level": level, "withheld": True,
@@ -292,7 +292,7 @@ class App:
     def get_solution(self, key):
         """Force the solution (level 4)."""
         problem = self.by_key[key]
-        result = tutor_generate(problem, index=self.index, hint_level=4, timeout=35)
+        result = tutor_generate(problem, index=self.index, hint_level=4, timeout=60)
         state = self._get_or_create_state(key)
         state["history"].append(result)
         state["level"] = 4
@@ -308,7 +308,7 @@ class App:
         state = self._get_or_create_state(key)
         state["reasoning"] = reasoning
 
-        result = tutor_student_correction(problem, reasoning, index=self.index, timeout=35)
+        result = tutor_student_correction(problem, reasoning, index=self.index, timeout=60)
         state["history"].append(result)
         return result
 
